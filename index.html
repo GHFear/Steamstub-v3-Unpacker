@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SteamStub v3 Unpacker 0.1.2 | IllusorySoftware</title>
+  <style>
+    :root {
+      --bg-1: #0f1724;
+      --glass: rgba(255,255,255,0.06);
+      --glass-2: rgba(255,255,255,0.03);
+      --muted: rgba(255,255,255,0.75);
+      --accent1: #7c3aed;
+      --accent2: #06b6d4;
+      --fw-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      background: radial-gradient(1000px 600px at 10% 10%, rgba(124,58,237,0.12), transparent 8%),
+                  radial-gradient(800px 500px at 90% 90%, rgba(6,182,212,0.08), transparent 8%),
+                  linear-gradient(180deg,var(--bg-1), #071025);
+      font-family: Inter, system-ui, sans-serif;
+      color: #e6eef8;
+      -webkit-font-smoothing: antialiased;
+      box-sizing: border-box;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 20px;
+    }
+    .logo {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      background: linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02));
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      backdrop-filter: blur(6px);
+      border:1px solid rgba(255,255,255,0.04);
+      box-shadow:0 8px 30px rgba(2,6,23,0.6);
+    }
+    .logo svg {
+      width:28px;
+      height:28px;
+      opacity:0.95;
+    }
+
+    h1 { margin:0; font-size: 20px; }
+    p { margin:4px 0 0 0; color: rgba(230,238,248,0.75); }
+
+    .drop-zone {
+      margin: 0 20px;
+      padding: 32px;
+      border-radius: 14px;
+      border: 2px dashed rgba(255,255,255,0.06);
+      text-align: center;
+      background: linear-gradient(180deg, var(--glass), var(--glass-2));
+      backdrop-filter: blur(10px) saturate(120%);
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+
+    .drop-zone.hover {
+      border-color: var(--accent1);
+      background: rgba(124,58,237,0.15);
+      box-shadow: 0 0 25px rgba(124,58,237,0.55);
+      transform: scale(1.02);
+    }
+
+    .drop-zone:hover {
+      border-color: rgba(255,255,255,0.35);
+      transform: scale(1.01);
+    }
+
+    .console {
+      flex: 1;
+      margin: 20px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(0,0,0,0.75), rgba(0,0,0,0.6));
+      padding: 16px;
+      font-family: var(--fw-mono);
+      font-size: 14px;
+      color: #9ef59e;
+      line-height: 1.4;
+      overflow-y: auto;
+      box-shadow: inset 0 0 12px rgba(0,0,0,0.8);
+      white-space: pre-wrap;
+      backdrop-filter: blur(6px);
+      border:1px solid rgba(255,255,255,0.08);
+
+      scrollbar-width: thin;
+      scrollbar-color: #66c0f4 #0b1b2b;
+    }
+    .console .line { display: block; }
+
+    #console::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    #console::-webkit-scrollbar-track {
+      background: #0b1b2b;
+      border-radius: 4px;
+    }
+
+    #console::-webkit-scrollbar-thumb {
+      background-color: #66c0f4;
+      border-radius: 4px;
+      border: 2px solid #0b1b2b;
+    }
+
+    .log-info { color: #9cdcfe; }
+    .log-success { color: #00ff00; }
+    .log-error { color: #f48771; }
+    .log-warn { color: #cca700; }
+
+    .bottom-controls {
+      display: flex;
+      gap: 10px;
+      margin: 0 20px 20px 20px;
+    }
+    .bottom-controls button {
+      background: linear-gradient(180deg,rgba(114, 114, 114, 0.55), rgba(70, 70, 70, 0.55));
+      color: white;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      opacity: 75%;
+    }
+    .bottom-controls button:hover {
+      opacity: 100%;
+    }
+    .bottom-controls button:disabled {
+      background: linear-gradient(180deg,rgba(114, 114, 114, 0.55), rgba(70, 70, 70, 0.55));
+      color: rgba(255,255,255,0.4);
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* Footer */
+    #footer {
+      margin-top: auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #737373;
+      height: 40px;
+      background-color: transparent;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 18l6-6-6-6"></path>
+        <path d="M8 6L2 12l6 6"></path>
+      </svg>
+    </div>
+    <div>
+      <h1>SteamStub v3 Unpacker</h1>
+      <p>Drop your <code>.exe</code> to unpack</p>
+    </div>
+  </header>
+
+  <div id="dropZone" class="drop-zone">Drag &amp; drop your <code>.exe</code> here, or click to browse</div>
+
+  <div id="logWindow" class="console"></div>
+
+  <div class="bottom-controls">
+    <button id="unpackBtn" disabled>Unpack</button>
+    <button id="saveBtn" disabled>Save File</button>
+  </div>
+
+  <footer id="footer">
+    <div>GHFear @ Illusory Software | 2025</div>
+  </footer>
+
+<script>
+  const logWindow = document.getElementById("logWindow");
+  function appendLog(message, type="info") {
+    const line = document.createElement("div");
+    line.className = `log-${type} line`;
+    line.textContent = message;
+    logWindow.appendChild(line);
+    logWindow.scrollTop = logWindow.scrollHeight;
+  }
+  console.log = (...args) => appendLog(args.join(" "), "info");
+  console.info = (...args) => appendLog(args.join(" "), "success");
+  console.error = (...args) => appendLog(args.join(" "), "error");
+  console.warn = (...args) => appendLog(args.join(" "), "warn");
+
+  var Module = {
+    onRuntimeInitialized: function () {
+      document.getElementById("unpackBtn").disabled = true;
+      document.getElementById("saveBtn").disabled = true;
+      console.log("[*] Runtime initialized");
+    }
+  };
+
+  const dropZone = document.getElementById('dropZone');
+  const unpackBtn = document.getElementById('unpackBtn');
+  const saveBtn = document.getElementById('saveBtn');
+
+  let loadedFile = null;
+
+  function handleFile(file) {
+    if (!file) return;
+    logWindow.innerHTML = "";
+    saveBtn.disabled = true;
+    loadExecutableBuffer(file);
+  }
+
+  dropZone.addEventListener('click', () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.exe';
+    inp.onchange = () => { if (inp.files.length) handleFile(inp.files[0]); };
+    inp.click();
+  });
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('hover');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('hover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+
+  unpackBtn.addEventListener('click', () => {
+    logWindow.innerHTML = "";
+    unpackLoadedFile();
+  });
+
+  saveBtn.addEventListener('click', () => {
+    const ptr = Module.ccall('get_unpacked_ptr', 'number', [], []);
+    const size = Module.ccall('get_unpacked_size', 'number', [], []);
+
+    if (!ptr || !size) { alert("No unpacked buffer available"); return; }
+
+    const data = new Uint8Array(Module.HEAPU8.buffer, ptr, size);
+    const blob = new Blob([data], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.href = url = URL.createObjectURL(blob);
+    a.download = loadedFile.name + '.unpacked';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  async function loadExecutableBuffer(file) {
+    const headerBuf = await file.slice(0, 4).arrayBuffer();
+    const bytes = new Uint8Array(headerBuf);
+    if (bytes[0] === 0x4D && bytes[1] === 0x5A) {
+      console.log("[*] Valid file type: Windows PE (.exe)");
+    } else {
+      unpackBtn.disabled = true;
+      console.warn("[*] Unsupported file format.");
+      return;
+    }
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      loadedFile = { name: file.name, arrayBuffer, bytes };
+      console.log(`[*] Loaded file: ${file.name} (${bytes.length} bytes)`);
+      unpackBtn.disabled = false;
+    } catch (err) { console.error("[*] Error loading file:", err); }
+  }
+
+  function unpackLoadedFile() {
+    if (!loadedFile) { console.error("[*] No file loaded yet!"); return; }
+    try {
+      const ptr = _malloc(loadedFile.bytes.length);
+      HEAPU8.set(loadedFile.bytes, ptr);
+      console.log("[*] Allocated space for exe in WASM.\n");
+      const result = ccall('unpack_buffer', 'number', ['number','number'], [ptr, loadedFile.bytes.length]);
+      if (result === 0) {
+        console.info("[+] Unpacking result:", "Success!");
+        saveBtn.disabled = false;
+      } else {
+        console.error("[-] Unpacking result:", "Failure!");
+      }
+      _free(ptr);
+      console.log("[*] Freed WASM memory.\n");
+    } catch (err) { console.error("[*] Error unpacking file:", err); }
+  }
+</script>
+<script src="index.js"></script>
+</body>
+</html>
