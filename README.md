@@ -7,6 +7,9 @@ Supports multiple SteamStub v3 versions<br>
 Written in modern C++<br>
 Compiles to WASM for cross-platform usage<br>
 
+### License<br>
+Attribution-NonCommercial 4.0 International<br>
+
 ### Supported Versions<br>
 3.0.0<br>
 3.1.0<br>
