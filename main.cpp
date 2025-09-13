@@ -608,7 +608,7 @@ extern "C" {
             }
         }
 
-        // For demo, just store it
+        // For final, move unpacked file to unpacked_buffer.
         unpacked_buffer = std::move(file);
         return 0;
     }
