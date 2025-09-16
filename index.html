@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SteamStub v3 Unpacker 0.1.2 | IllusorySoftware</title>
+  <title>SteamStub v3 Unpacker 0.1.3 | IllusorySoftware</title>
   <style>
     :root {
       --bg-1: #0f1724;
@@ -282,26 +282,80 @@
       const bytes = new Uint8Array(arrayBuffer);
       loadedFile = { name: file.name, arrayBuffer, bytes };
       console.log(`[*] Loaded file: ${file.name} (${bytes.length} bytes)`);
-      unpackBtn.disabled = false;
+      await check_if_exe_can_unpack();
     } catch (err) { console.error("[*] Error loading file:", err); }
   }
 
-  function unpackLoadedFile() {
-    if (!loadedFile) { console.error("[*] No file loaded yet!"); return; }
+  function check_if_exe_can_unpack() {
+    let ptr = 0;
     try {
-      const ptr = _malloc(loadedFile.bytes.length);
-      HEAPU8.set(loadedFile.bytes, ptr);
-      console.log("[*] Allocated space for exe in WASM.\n");
-      const result = ccall('unpack_buffer', 'number', ['number','number'], [ptr, loadedFile.bytes.length]);
-      if (result === 0) {
-        console.info("[+] Unpacking result:", "Success!");
-        saveBtn.disabled = false;
-      } else {
-        console.error("[-] Unpacking result:", "Failure!");
-      }
-      _free(ptr);
-      console.log("[*] Freed WASM memory.\n");
-    } catch (err) { console.error("[*] Error unpacking file:", err); }
+        ptr = _malloc(loadedFile.bytes.length);
+        HEAPU8.set(loadedFile.bytes, ptr);
+        const result = ccall('check_version_information', 'number', ['number','number'], [ptr, loadedFile.bytes.length]);
+        switch (result) {
+          case 0: {
+            unpackBtn.disabled = true;
+            break;
+          }
+          case 1: {
+            unpackBtn.disabled = true;
+            break;
+          }
+          case 2: {
+            unpackBtn.disabled = true;
+            break;
+          }
+          case 3: {
+            unpackBtn.disabled = false;
+            break;
+          }
+          case 4: {
+            unpackBtn.disabled = false;
+            break;
+          }
+          case 5: {
+            unpackBtn.disabled = false;
+            break;
+          }
+          default:
+            break;
+        }
+    } catch (err) {
+        console.error("[*] Error checking version information:", err);
+    } finally {
+        if (ptr) {
+            _free(ptr);
+        }
+    }
+  }
+
+  function unpackLoadedFile() {
+    if (!loadedFile) { 
+        console.error("[*] No file loaded yet!"); 
+        return; 
+    }
+
+    let ptr = 0;
+    try {
+        ptr = _malloc(loadedFile.bytes.length);
+        HEAPU8.set(loadedFile.bytes, ptr);
+        console.log("[*] Allocated space for exe in WASM.\n");
+
+        const result = ccall('unpack_buffer', 'number', ['number','number'], [ptr, loadedFile.bytes.length]);
+        if (result === 0) {
+            console.info("[+] Unpacking result:", "Success!");
+            saveBtn.disabled = false;
+        } else {
+            console.error("[-] Unpacking result:", "Failure!");
+        }
+    } catch (err) {
+        console.error("[*] Error unpacking file:", err);
+    } finally {
+        if (ptr) {
+            _free(ptr);
+            console.log("[*] Freed WASM memory.\n");
+        }
+    }
   }
 </script>
 <script src="index.js"></script>

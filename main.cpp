@@ -410,15 +410,113 @@ struct steamstub_header {
 // ----------------------------------------------------------------------------------------
 
 #define STUB_SIGNATURE 0xC0DEC0DFu
+enum SteamStubVersion {
+  Unknown,
+  V1,
+  V2,
+  V3,
+  V31,
+  V312
+};
 
 int main(int argc, char** argv) {
     return 0;
 }
 
-// Example: store unpacked buffer
+// Extract .bind section.
+bool extract_bind(std::vector<uint8_t> &file, size_t &section_size, size_t &section_offset) {
+    auto dos2 = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
+    size_t nt_off2 = static_cast<size_t>(dos2->e_lfanew);
+    auto nt2 = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
+    auto& fh2 = nt2->FileHeader;
+
+    size_t sec_off2 = nt_off2 + sizeof(uint32_t) + sizeof(IMAGE_FILE_HEADER_MIN) + fh2.SizeOfOptionalHeader;
+    auto sh2 = reinterpret_cast<IMAGE_SECTION_HEADER_MIN*>(file.data() + sec_off2);
+
+    int bind_idx = -1;
+    for (int i = 0; i < fh2.NumberOfSections; ++i) {
+        std::string name(sh2[i].Name, sh2[i].Name + 8);
+        size_t z = name.find('\0'); if (z != std::string::npos) name.resize(z);
+        if (name == ".bind") { std::cout << "[*] .bind section found\n"; bind_idx = i; break; }
+    }
+
+    // Assuming bind_idx is valid
+    if (bind_idx != -1) {
+        auto& bind_section = sh2[bind_idx];
+
+        section_size = bind_section.SizeOfRawData;
+        section_offset = bind_section.PointerToRawData;
+
+        // Make sure offset + size does not exceed file size
+        if (section_offset + section_size <= file.size()) {
+            return true;
+        }
+    }
+    
+    std::cerr << "[-] No .bind section could be found\n";
+    return false;
+}
+
+// Get SteamStub version.
+SteamStubVersion get_steamstub_version(std::vector<uint8_t> &bind_buffer) {
+    // Check for SteamStub version.
+    // Credit to atom0s for sigs | https://github.com/atom0s/Steamless/blob/master/Steamless.Unpacker.Variant31.x64/Main.cs
+
+    // V3 base version.
+    if (scan_signature(bind_buffer, "E8 00 00 00 00 50 53 51 52 56 57 55 41 50") != SIZE_MAX) {
+        if (scan_signature(bind_buffer, "48 8D 91 ? ? ? ? 48") != SIZE_MAX) {
+            std::cout << "[*] SteamStub v3.0.0\n";
+            return V3;
+        }
+        else if (scan_signature(bind_buffer, "48 8D 91 ? ? ? ? 41") != SIZE_MAX) {
+            std::cout << "[*] SteamStub v3.1.0\n";
+            return V31;
+        } 
+        else if (scan_signature(bind_buffer, "48 C7 84 24 ? ? ? ? ? ? ? ? 48") != SIZE_MAX) {
+            std::cout << "[*] SteamStub v3.1.2\n";
+            return V312;
+        }
+        else {
+            std::cout << "[*] Unknown SteamStub v3 version.\n"; 
+            return Unknown;
+        } 
+    }
+    else if (scan_signature(bind_buffer, "53 51 52 56 57 55 8B EC 81 EC 00 10 00 00 C7") != SIZE_MAX) {
+        // V2 version.
+        std::cerr << "[-] SteamStub v2.x (Not yet supported)\n";
+        return V2;
+    }
+    else if (scan_signature(bind_buffer, "60 81 EC 00 10 00 00 BE ? ? ? ? B9 6A") != SIZE_MAX) {
+        // V1 version.
+        std::cerr << "[-] SteamStub v1.x (Not yet supported)\n";
+        return V1;
+    }
+    else {
+        std::cerr << "[*] Unknown SteamStub version.\n";
+        return Unknown;
+    }
+}
+
+// Store unpacked buffer
 static std::vector<uint8_t> unpacked_buffer;
 
 extern "C" {
+    EMSCRIPTEN_KEEPALIVE
+    int check_version_information(uint8_t* ptr, size_t size) {
+        // Copy file buffer into vector
+        std::vector<uint8_t> file(ptr, ptr + size);
+
+        if (file.empty()) { std::cerr << "[-] Failed to read input file\n"; return 1; }
+        std::cout << "[*] Read file, size = " << file.size() << " bytes\n";
+
+        // Extract .bind section into its own buffer for faster scanning and less false positives.
+        size_t section_size = -1;
+        size_t section_offset = -1;
+        if (!extract_bind(file, section_size, section_offset)) { return 0; }
+        std::vector<uint8_t> bind_buffer(section_size);
+        std::memcpy(bind_buffer.data(), file.data() + section_offset, section_size);
+        return get_steamstub_version(bind_buffer);
+    }
 
     // Called from JS with pointer to file buffer
     EMSCRIPTEN_KEEPALIVE
@@ -429,24 +527,18 @@ extern "C" {
         if (file.empty()) { std::cerr << "[-] Failed to read input file\n"; return 1; }
         std::cout << "[*] Read file, size = " << file.size() << " bytes\n";
 
-        // Check for SteamStub version.
-        // Credit to atom0s for sigs | https://github.com/atom0s/Steamless/blob/master/Steamless.Unpacker.Variant31.x64/Main.cs
-        size_t v3found = scan_signature(file, "E8 00 00 00 00 50 53 51 52 56 57 55 41 50");
-        if (v3found != SIZE_MAX) {
-            if (scan_signature(file, "48 8D 91 ? ? ? ? 48") != SIZE_MAX)
-                std::cout << "[*] SteamStub v3.0.0 signature found\n";
-            else if (scan_signature(file, "48 8D 91 ? ? ? ? 41") != SIZE_MAX)
-                std::cout << "[*] SteamStub v3.1.0 signature found\n";
-            else if (scan_signature(file, "48 C7 84 24 ? ? ? ? ? ? ? ? 48") != SIZE_MAX)
-                std::cout << "[*] SteamStub v3.1.2 signature found\n";
-            else
-                std::cout << "[*] Unknown SteamStub v3 version.\n";
-        } 
-        else {
-            std::cout << "[*] Unknown SteamStub version.\n";
-            return 1;
-        }
+        // Extract .bind section into its own buffer for faster scanning and less false positives.
+        size_t section_size = -1;
+        size_t section_offset = -1;
+        if (!extract_bind(file, section_size, section_offset)) { return 1; }
+        std::vector<uint8_t> bind_buffer(section_size);
+        std::memcpy(bind_buffer.data(), file.data() + section_offset, section_size);
 
+        SteamStubVersion steamstub_version = get_steamstub_version(bind_buffer);
+
+        // Return here if version isn't supported.
+        if (steamstub_version != V3 && steamstub_version != V31 && steamstub_version != V312) { return 1;}
+        
         uint32_t ep_rva = 0; uint64_t image_base = 0;
         if (!get_entrypoint_rva(file, ep_rva, image_base)) { std::cerr << "[-] Failed to parse PE headers\n"; return 1; }
         std::cout << "[*] EntryPoint RVA = 0x" << std::hex << ep_rva << std::dec << "\n";
