@@ -23,6 +23,14 @@
 #include <emscripten/val.h>
 
 
+void printAESKey(const uint8_t* key, size_t size) {
+    std::cout << "[*] SteamStub AES Key: 0x";
+    for (size_t i = 0; i < size; ++i) {
+        std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)key[i];
+    }
+    std::cout << std::dec << "\n";
+}
+
 static bool parse_ida_signature(const std::string& sig, std::vector<uint8_t>& pattern, std::vector<bool>& mask) {
     std::istringstream iss(sig);
     std::string token;
@@ -624,6 +632,9 @@ extern "C" {
 
             v_code_bytes.insert(v_code_bytes.end(), file.data() + text_ptr, file.data() + text_ptr + text_sz);
             std::cout << "[*] Total bytes to decrypt = " << v_code_bytes.size() << "\n";
+
+            // Print AES Key found the SteamStub header.
+            printAESKey(header->aes_key, 32);
 
             std::cout << "[*] Running AES-256 ECB decrypt on IV\n";
             AES256_ECB_decrypt(header->aes_iv, 16, header->aes_key);
