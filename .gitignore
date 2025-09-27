@@ -1,0 +1,17 @@
+# ignore index.wasm
+index.wasm
+
+# ignore index.js
+index.js
+
+# ignore emsdk folder
+emsdk
+
+# ignore vscode folder
+.vscode
+
+# ignore release folder
+release
+
+# ignore test-binaries folder
+test-binaries
