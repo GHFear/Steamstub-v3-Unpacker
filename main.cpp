@@ -22,7 +22,7 @@
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
 
-
+// Print AES Key hexadecimal string.
 void printAESKey(const uint8_t* key, size_t size) {
     std::cout << "[*] SteamStub AES Key: 0x";
     for (size_t i = 0; i < size; ++i) {
@@ -31,6 +31,7 @@ void printAESKey(const uint8_t* key, size_t size) {
     std::cout << std::dec << "\n";
 }
 
+// Parse IDA Signature.
 static bool parse_ida_signature(const std::string& sig, std::vector<uint8_t>& pattern, std::vector<bool>& mask) {
     std::istringstream iss(sig);
     std::string token;
@@ -48,6 +49,7 @@ static bool parse_ida_signature(const std::string& sig, std::vector<uint8_t>& pa
     return !pattern.empty();
 }
 
+// Scan binary buffer for matching IDA signature.
 static size_t scan_signature(const std::vector<uint8_t>& buffer, const std::string& ida_sig) {
     std::vector<uint8_t> pattern;
     std::vector<bool> mask;
@@ -469,6 +471,63 @@ bool extract_bind(std::vector<uint8_t> &file, size_t &section_size, size_t &sect
     return false;
 }
 
+uint32_t CalculatePEChecksum(std::vector<uint8_t>& file) {
+    if (file.size() < 0x100) return false; 
+    // trivial sanity 
+    uint8_t *base = file.data(); 
+    size_t filesize = file.size(); 
+    // Validate DOS header and NT headers offsets 
+    auto dos = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(base); 
+    size_t nt_off = static_cast<size_t>(dos->e_lfanew); 
+    if (nt_off + sizeof(IMAGE_NT_HEADERS64_MIN) > filesize) return false; 
+    auto nt = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(base + nt_off); 
+    // Compute checksum field offset 
+    size_t checksum_off = reinterpret_cast<uint8_t*>(&nt->OptionalHeader.CheckSum) - base; 
+    if (checksum_off + sizeof(uint32_t) > filesize) return false;
+
+    // Perform checksum
+    uint64_t checksum = 0;
+    uint64_t top = 0xFFFFFFFFULL;
+    top++;
+
+    // Walk file in DWORDs
+    for (size_t i = 0; i + 3 < filesize; i += 4) {
+        uint32_t dw = 0;
+        std::memcpy(&dw, base + i, sizeof(dw));
+
+        // Skip the CheckSum field
+        if (i == checksum_off) continue;
+
+        checksum = (checksum & 0xffffffffULL) + dw + (checksum >> 32);
+        if (checksum > top) {
+            checksum = (checksum & 0xffffffffULL) + (checksum >> 32);
+        }
+    }
+
+    // Handle remaining bytes (if filesize not multiple of 4)
+    size_t remainder = filesize & 3;
+    if (remainder) {
+        uint32_t last = 0;
+        std::memcpy(&last, base + (filesize - remainder), remainder);
+        if ((filesize - remainder) != checksum_off) {
+            checksum = (checksum & 0xffffffffULL) + last + (checksum >> 32);
+            if (checksum > top) {
+                checksum = (checksum & 0xffffffffULL) + (checksum >> 32);
+            }
+        }
+    }
+
+    // Final folds
+    checksum = (checksum & 0xffffULL) + (checksum >> 16);
+    checksum = (checksum & 0xffffULL) + (checksum >> 16);
+    checksum = checksum & 0xffffULL;
+
+    checksum += static_cast<uint32_t>(filesize);
+
+    return static_cast<uint32_t>(checksum);
+}
+
+
 // Get SteamStub version.
 SteamStubVersion get_steamstub_version(std::vector<uint8_t> &bind_buffer) {
     // Check for SteamStub version.
@@ -531,13 +590,20 @@ extern "C" {
     }
 
     EMSCRIPTEN_KEEPALIVE
+    bool isUpdateChecksumChecked() {
+        emscripten::val document = emscripten::val::global("document");
+        emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("updateChecksum"));
+        return checkbox["checked"].as<bool>();
+    }
+
+    EMSCRIPTEN_KEEPALIVE
     bool isRemoveCertChecked() {
         emscripten::val document = emscripten::val::global("document");
         emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("removeCert"));
         return checkbox["checked"].as<bool>();
     }
 
-       EMSCRIPTEN_KEEPALIVE
+    EMSCRIPTEN_KEEPALIVE
     bool isKeepBindChecked() {
         emscripten::val document = emscripten::val::global("document");
         emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("keepBind"));
@@ -645,20 +711,20 @@ extern "C" {
 
             AES256_CBC_decrypt(v_code_bytes.data(), decrypt_len, header->aes_key, header->aes_iv);
 
-            // remove PKCS#7 padding
+            // Remove PKCS#7 padding fromn decrypted section.
             pkcs7_unpad(v_code_bytes);
 
-            // write back decrypted portion and restore stolen bytes at the start
+            // Write back decrypted section and restore stolen bytes at the start (to match original binary size)
             size_t steal_sz = sizeof(header->code_section_stolen);
             if (decrypt_len < steal_sz) {
                 std::cerr << "[-] Decrypted length too small\n";
                 return 1;
             }
 
-            // add the stolen bytes
+            // Add the stolen bytes
             memcpy(file.data() + text_ptr, header->code_section_stolen, steal_sz);
 
-            // then put the rest of the decrypted bytes
+            // Then put the rest of the decrypted bytes
             size_t copy_sz = std::min<size_t>(text_sz - steal_sz, decrypt_len - steal_sz);
             memcpy(file.data() + text_ptr + steal_sz, v_code_bytes.data() + steal_sz, copy_sz);
 
@@ -666,7 +732,7 @@ extern "C" {
                     << " decrypted .text bytes\n";
         }
 
-        // update AddressOfEntryPoint with OEP (convert VA -> RVA using image_base)
+        // Update AddressOfEntryPoint with OEP (convert VA -> RVA using image_base)
         if (header->oep_addr != 0 && image_base != 0) {
             uint32_t new_ep_rva = 0;
             if (header->oep_addr >= image_base) {
@@ -685,7 +751,7 @@ extern "C" {
             std::cout << "[*] Skipping EP update (missing values)\n";
         }
 
-        // remove .bind section
+        // Remove .bind section
         {
             auto dos2 = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
             size_t nt_off2 = static_cast<size_t>(dos2->e_lfanew);
@@ -765,6 +831,19 @@ extern "C" {
                     } 
                 }
             }
+        }
+
+        // Update PE Checksum (OptionalHeader.CheckSum)
+        if (isUpdateChecksumChecked() == true) {
+            uint32_t newChecksum = CalculatePEChecksum(file);
+
+            auto dos = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
+            auto nt = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(file.data() + dos->e_lfanew);
+            nt->OptionalHeader.CheckSum = newChecksum;
+
+            std::cout << "[*] Updated checksum to 0x" << std::hex << newChecksum << std::dec << "\n";
+        } else {
+            std::cout << "[*] Keeping old checksum by user request\n";
         }
 
         // For final, move unpacked file to unpacked_buffer.
