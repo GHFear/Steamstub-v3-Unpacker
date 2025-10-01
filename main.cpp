@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------------- //
 //  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
-//  Version 0.1.4                                                            //
+//  Version 0.1.5                                                            //
 //  Compatible with Emscripten (drop the emsdk folder next to this file and  //
 //  compile with the included compile script for linux)                      //
 // ------------------------------------------------------------------------- //
