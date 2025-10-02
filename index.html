@@ -408,7 +408,7 @@
     const blob = new Blob([data], { type: 'application/octet-stream' });
     const a = document.createElement('a');
     a.href = url = URL.createObjectURL(blob);
-    a.download = loadedFile.name + '.unpacked';
+    a.download = loadedFile.name + '.unpacked.exe';
     a.click();
     URL.revokeObjectURL(url);
   });
