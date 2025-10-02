@@ -227,6 +227,7 @@
 
     .settings {
       position: relative;
+      width: fit-content;
       display: inline-block;
       margin-left: 20px;
     }
@@ -411,26 +412,28 @@
     </footer>
   </section>
 
-  <script>
-    function toggleSettings() {
-      const menu = document.getElementById("settingsMenu");
-      if (menu.classList.contains("show")) {
-        menu.classList.remove("show");
-        setTimeout(() => menu.style.display = "none", 250); // wait for fade-out
-      } else {
-        menu.style.display = "block";
-        setTimeout(() => menu.classList.add("show"), 10); // trigger transition
-      }
+<script>
+  function toggleSettings() {
+    const menu = document.getElementById("settingsMenu");
+    if (menu.classList.contains("show")) {
+      menu.classList.remove("show");
+      setTimeout(() => menu.style.display = "none", 250); // wait for fade-out
+    } else {
+      menu.style.display = "block";
+      setTimeout(() => menu.classList.add("show"), 10); // trigger fade-in
     }
+  }
 
-    // Close if clicked outside
-    window.addEventListener("click", function(e) {
-      if (!e.target.closest(".settings")) {
-        const menu = document.getElementById("settingsMenu");
-        menu.classList.remove("show");
-        setTimeout(() => menu.style.display = "none", 250);
-      }
-    });
+  // Close the settings dropdown if clicked outside
+  window.addEventListener("click", function(e) {
+    const settings = document.querySelector(".settings");
+    const menu = document.getElementById("settingsMenu");
+
+    if (!settings.contains(e.target)) {
+      menu.classList.remove("show");
+      setTimeout(() => menu.style.display = "none", 250); // match animation duration
+    }
+  });
 </script>
   
 <script>
