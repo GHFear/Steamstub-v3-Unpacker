@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------------- //
 //  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
-//  Version 0.1.5                                                            //
+//  Version 0.1.6                                                            //
 //  Compatible with Emscripten (drop the emsdk folder next to this file and  //
 //  compile with the included compile script for linux)                      //
 // ------------------------------------------------------------------------- //
@@ -664,10 +664,23 @@ extern "C" {
         std::cout << "[*] Stub OK. AppID: " << header->appid << " Flags: 0x" << std::hex << header->flags << std::dec << "\n";
         std::cout << "[*] OEP Va: 0x" << std::hex << header->oep_addr << std::dec << " Code raw size: " << header->code_rawsize << "\n";
 
-        bool noencrypt = (header->flags & STUB_FLAG_NoEncryption) != 0;
-        std::cout << "[*] NoEncryption flag: " << (noencrypt ? "YES" : "NO") << "\n";
+        // Check stub header flags and print them to the log window.
+        bool NoModuleVerification = (header->flags & STUB_FLAG_NoModuleVerification) != 0;
+        std::cout << "[*] NoModuleVerification flag: " << (NoModuleVerification ? "YES" : "NO") << "\n";
 
-        if (!noencrypt) {
+        bool NoEncryption = (header->flags & STUB_FLAG_NoEncryption) != 0;
+        std::cout << "[*] NoEncryption flag: " << (NoEncryption ? "YES" : "NO") << "\n";
+
+        bool NoOwnershipCheck = (header->flags & STUB_FLAG_NoOwnershipCheck) != 0;
+        std::cout << "[*] NoOwnershipCheck flag: " << (NoOwnershipCheck ? "YES" : "NO") << "\n";
+
+        bool NoDebuggerCheck = (header->flags & STUB_FLAG_NoDebuggerCheck) != 0;
+        std::cout << "[*] NoDebuggerCheck flag: " << (NoDebuggerCheck ? "YES" : "NO") << "\n";
+
+        bool NoErrorDialog = (header->flags & STUB_FLAG_NoErrorDialog) != 0;
+        std::cout << "[*] NoErrorDialog flag: " << (NoErrorDialog ? "YES" : "NO") << "\n";
+
+        if (!NoEncryption) {
             // locate .text section
             auto dos = reinterpret_cast<const IMAGE_DOS_HEADER_MIN*>(file.data());
             size_t nt_off = static_cast<size_t>(dos->e_lfanew);
