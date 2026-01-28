@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SteamStub v3 Unpacker 0.1.6 | IllusorySoftware</title>
+  <title>SteamStub v3 Unpacker 0.1.7 | IllusorySoftware</title>
   <style>
     :root {
       --bg-1: #0f1724;
@@ -346,7 +346,7 @@
         </svg>
       </div>
       <div>
-        <h1>SteamStub v3 Unpacker 0.1.6 | IllusorySoftware</h1>
+        <h1>SteamStub v3 Unpacker 0.1.7 | IllusorySoftware</h1>
         <p>Drop your <code>.exe</code> to unpack</p>
       </div>
     </header>
@@ -526,11 +526,11 @@
       const bytes = new Uint8Array(arrayBuffer);
       loadedFile = { name: file.name, arrayBuffer, bytes };
       console.log(`[*] Loaded file: ${file.name} (${bytes.length} bytes)`);
-      await check_if_exe_can_unpack();
+      await isUnpackingSupported();
     } catch (err) { console.error("[*] Error loading file:", err); }
   }
 
-  function check_if_exe_can_unpack() {
+  function isUnpackingSupported() {
     let ptr = 0;
     try {
         ptr = _malloc(loadedFile.bytes.length);
@@ -550,14 +550,38 @@
             break;
           }
           case 3: {
-            unpackBtn.disabled = false;
+            unpackBtn.disabled = true;
             break;
           }
           case 4: {
-            unpackBtn.disabled = false;
+            unpackBtn.disabled = true;
             break;
           }
           case 5: {
+            unpackBtn.disabled = true;
+            break;
+          }
+          case 6: {
+            unpackBtn.disabled = true;
+            break;
+          }
+          case 7: {
+            unpackBtn.disabled = true;
+            break;
+          }
+          case 8: {
+            unpackBtn.disabled = false;
+            break;
+          }
+          case 9: {
+            unpackBtn.disabled = false;
+            break;
+          }
+          case 10: {
+            unpackBtn.disabled = true;
+            break;
+          }
+          case 11: {
             unpackBtn.disabled = false;
             break;
           }
