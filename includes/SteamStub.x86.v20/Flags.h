@@ -8,8 +8,11 @@
 //  research on steamstub drm.                                               //
 //  Without y'all, this wouldn't be possible.                                //
 // ------------------------------------------------------------------------- //
-#include <vector>
-#include <cstdint>
 
-// Store unpacked buffer
-std::vector<uint8_t> unpacked_buffer;
+#define STUB_FLAG_None 0x00
+#define STUB_FLAG_UseValidation 0x01
+#define STUB_FLAG_UseWinVerifyTrustValidation 0x02
+#define STUB_FLAG_UseEncodedCodeSection 0x04
+#define STUB_FLAG_UseThreadCheckValidation 0x08
+#define STUB_FLAG_UseMemoryMappedValidation 0x10
+#define STUB_SIGNATURE 0xC0DEC0DFu

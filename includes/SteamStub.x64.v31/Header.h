@@ -1,4 +1,14 @@
-#include "../SteamStub.x64.v31/Flags.h"
+#pragma once
+// ------------------------------------------------------------------------- //
+//  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
+//  Compatible with Emscripten (drop the emsdk folder next to this file and  //
+//  compile with the included compile script for linux)                      //
+// ------------------------------------------------------------------------- //
+//  Lots of credit to Cyanic (aka Golem_x86), atom0s and illnyang for prior  //
+//  research on steamstub drm.                                               //
+//  Without y'all, this wouldn't be possible.                                //
+// ------------------------------------------------------------------------- //
+#include "Flags.h"
 
 namespace SteamStub_x64_v31
 {
@@ -38,7 +48,7 @@ namespace SteamStub_x64_v31
 
     int UnpackStub(std::vector<uint8_t>& file) {
         uint32_t ep_rva = 0; uint64_t image_base = 0;
-        if (!get_entrypoint_rva(file, ep_rva, image_base)) { std::cerr << "[-] Failed to parse PE headers\n"; return 1; }
+        if (!PE64::get_entrypoint_rva(file, ep_rva, image_base)) { std::cerr << "[-] Failed to parse PE headers\n"; return 1; }
         std::cout << "[*] EntryPoint RVA = 0x" << std::hex << ep_rva << std::dec << "\n";
         std::cout << "[*] ImageBase = 0x" << std::hex << image_base << std::dec << "\n";
 
@@ -46,7 +56,7 @@ namespace SteamStub_x64_v31
         if (ep_rva < header_offset_from_ep) { std::cerr << "[-] EP RVA too small\n"; return 1; }
         uint32_t stub_rva = ep_rva - header_offset_from_ep;
         size_t stub_file_off = 0;
-        if (!rva_to_file_offset(file, stub_rva, stub_file_off)) { std::cerr << "[-] Failed to map stub RVA to file offset\n"; return 1; }
+        if (!PE64::rva_to_file_offset(file, stub_rva, stub_file_off)) { std::cerr << "[-] Failed to map stub RVA to file offset\n"; return 1; }
         std::cout << "[*] Stub header RVA = 0x" << std::hex << stub_rva << " => file off 0x" << stub_file_off << std::dec << "\n";
 
         // Set stub vector size based on version and copy data into buffer.
@@ -89,14 +99,14 @@ namespace SteamStub_x64_v31
 
         if (!NoEncryption) {
             // locate .text section
-            auto dos = reinterpret_cast<const IMAGE_DOS_HEADER_MIN*>(file.data());
+            auto dos = reinterpret_cast<const PE64::IMAGE_DOS_HEADER_MIN*>(file.data());
             size_t nt_off = static_cast<size_t>(dos->e_lfanew);
-            auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off);
+            auto nt = reinterpret_cast<const PE64::IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off);
             const auto& fh = nt->FileHeader;
-            size_t sec_off = nt_off + sizeof(uint32_t) + sizeof(IMAGE_FILE_HEADER_MIN) + fh.SizeOfOptionalHeader;
-            auto sh = reinterpret_cast<const IMAGE_SECTION_HEADER_MIN*>(file.data() + sec_off);
+            size_t sec_off = nt_off + sizeof(uint32_t) + sizeof(PE64::IMAGE_FILE_HEADER_MIN) + fh.SizeOfOptionalHeader;
+            auto sh = reinterpret_cast<const PE64::IMAGE_SECTION_HEADER_MIN*>(file.data() + sec_off);
 
-            const IMAGE_SECTION_HEADER_MIN* text_sh = nullptr;
+            const PE64::IMAGE_SECTION_HEADER_MIN* text_sh = nullptr;
             for (int i = 0; i < fh.NumberOfSections; ++i) {
                 std::string name(sh[i].Name, sh[i].Name + 8);
                 size_t z = name.find('\0'); if (z != std::string::npos) name.resize(z);
@@ -162,9 +172,9 @@ namespace SteamStub_x64_v31
                 // oep_addr is already RVA
                 new_ep_rva = static_cast<uint32_t>(header->oep_addr);
             }
-            auto dos2 = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
+            auto dos2 = reinterpret_cast<PE64::IMAGE_DOS_HEADER_MIN*>(file.data());
             size_t nt_off2 = static_cast<size_t>(dos2->e_lfanew);
-            auto nt2 = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
+            auto nt2 = reinterpret_cast<PE64::IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
             nt2->OptionalHeader.AddressOfEntryPoint = new_ep_rva;
             std::cout << "[*] Updated AddressOfEntryPoint to 0x" << std::hex << new_ep_rva << std::dec << "\n";
         } else {
@@ -173,13 +183,13 @@ namespace SteamStub_x64_v31
 
         // Remove .bind section
         {
-            auto dos2 = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
+            auto dos2 = reinterpret_cast<PE64::IMAGE_DOS_HEADER_MIN*>(file.data());
             size_t nt_off2 = static_cast<size_t>(dos2->e_lfanew);
-            auto nt2 = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
+            auto nt2 = reinterpret_cast<PE64::IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
             auto& fh2 = nt2->FileHeader;
 
-            size_t sec_off2 = nt_off2 + sizeof(uint32_t) + sizeof(IMAGE_FILE_HEADER_MIN) + fh2.SizeOfOptionalHeader;
-            auto sh2 = reinterpret_cast<IMAGE_SECTION_HEADER_MIN*>(file.data() + sec_off2);
+            size_t sec_off2 = nt_off2 + sizeof(uint32_t) + sizeof(PE64::IMAGE_FILE_HEADER_MIN) + fh2.SizeOfOptionalHeader;
+            auto sh2 = reinterpret_cast<PE64::IMAGE_SECTION_HEADER_MIN*>(file.data() + sec_off2);
 
             int bind_idx = -1;
             for (int i = 0; i < fh2.NumberOfSections; ++i) {
@@ -223,16 +233,16 @@ namespace SteamStub_x64_v31
 
         // Remove certificate table / ntHeaders->OptionalHeader.DataDirectory[4]
         {
-            auto dos2 = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
+            auto dos2 = reinterpret_cast<PE64::IMAGE_DOS_HEADER_MIN*>(file.data());
             size_t nt_off2 = static_cast<size_t>(dos2->e_lfanew);
-            auto nt2 = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
+            auto nt2 = reinterpret_cast<PE64::IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
             uint32_t numDirs = nt2->OptionalHeader.NumberOfRvaAndSizes;
-            if (numDirs <= IMAGE_DIRECTORY_ENTRY_SECURITY) {
+            if (numDirs <= PE64::IMAGE_DIRECTORY_ENTRY_SECURITY) {
                 std::cout << "[*] No certificate directory entry\n";
                 // Nothing to clear
             }
             else {
-                IMAGE_DATA_DIRECTORY_MIN &certDir = nt2->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY];
+                PE64::IMAGE_DATA_DIRECTORY_MIN &certDir = nt2->OptionalHeader.DataDirectory[PE64::IMAGE_DIRECTORY_ENTRY_SECURITY];
                 uint32_t origVA = certDir.VirtualAddress;
                 uint32_t origSize = certDir.Size;
 
@@ -255,10 +265,10 @@ namespace SteamStub_x64_v31
 
         // Update PE Checksum (OptionalHeader.CheckSum)
         if (isUpdateChecksumChecked() == true) {
-            uint32_t newChecksum = CalculatePEChecksum(file);
+            uint32_t newChecksum = PE64::CalculatePEChecksum(file);
 
-            auto dos = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
-            auto nt = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(file.data() + dos->e_lfanew);
+            auto dos = reinterpret_cast<PE64::IMAGE_DOS_HEADER_MIN*>(file.data());
+            auto nt = reinterpret_cast<PE64::IMAGE_NT_HEADERS64_MIN*>(file.data() + dos->e_lfanew);
             nt->OptionalHeader.CheckSum = newChecksum;
 
             std::cout << "[*] Updated checksum to 0x" << std::hex << newChecksum << std::dec << "\n";

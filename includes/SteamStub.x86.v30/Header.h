@@ -8,8 +8,8 @@
 //  research on steamstub drm.                                               //
 //  Without y'all, this wouldn't be possible.                                //
 // ------------------------------------------------------------------------- //
-#include <vector>
-#include <cstdint>
 
-// Store unpacked buffer
-std::vector<uint8_t> unpacked_buffer;
+namespace SteamStub_x86_v30
+{
+
+};

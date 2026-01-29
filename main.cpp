@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------------- //
 //  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
-//  Version 0.1.7                                                            //
+//  Version 0.1.8                                                            //
 //  Compatible with Emscripten (drop the emsdk folder next to this file and  //
 //  compile with the included compile script for linux)                      //
 // ------------------------------------------------------------------------- //
@@ -22,6 +22,8 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
+#include "includes/Tools/Decryption/AES/AES.h"
+#include "includes/Tools/PE/x64/PE64.h"
 #include "includes/Tools/Tools.h"
 #include "includes/Settings/Checkboxes.h"
 #include "includes/SteamStub.x64.v30/Header.h"
@@ -45,7 +47,7 @@ extern "C" {
         // Extract .bind section into its own buffer for faster scanning and less false positives.
         size_t section_size = -1;
         size_t section_offset = -1;
-        if (!extract_bind(file, section_size, section_offset)) { return 0; }
+        if (!PE64::extract_bind(file, section_size, section_offset)) { return 0; }
         std::vector<uint8_t> bind_buffer(section_size);
         std::memcpy(bind_buffer.data(), file.data() + section_offset, section_size);
         return get_steamstub_version(bind_buffer);
@@ -63,7 +65,7 @@ extern "C" {
         // Extract .bind section into its own buffer for faster scanning and less false positives.
         size_t section_size = -1;
         size_t section_offset = -1;
-        if (!extract_bind(file, section_size, section_offset)) { return 1; }
+        if (!PE64::extract_bind(file, section_size, section_offset)) { return 1; }
         std::vector<uint8_t> bind_buffer(section_size);
         std::memcpy(bind_buffer.data(), file.data() + section_offset, section_size);
 
