@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------------- //
 //  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
-//  Version 0.1.8                                                            //
+//  Version 0.1.9                                                            //
 //  Compatible with Emscripten (drop the emsdk folder next to this file and  //
 //  compile with the included compile script for linux)                      //
 // ------------------------------------------------------------------------- //
@@ -22,7 +22,7 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
-#include "includes/Tools/Decryption/AES/AES.h"
+#include "includes/Steam/Decryption/Decryption.h"
 #include "includes/Tools/PE/x64/PE64.h"
 #include "includes/Tools/Tools.h"
 #include "includes/Settings/Checkboxes.h"

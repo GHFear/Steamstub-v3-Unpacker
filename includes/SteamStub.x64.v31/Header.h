@@ -9,6 +9,7 @@
 //  Without y'all, this wouldn't be possible.                                //
 // ------------------------------------------------------------------------- //
 #include "Flags.h"
+#include "../Steam/Decryption/Decryption.h"
 
 namespace SteamStub_x64_v31
 {
@@ -46,6 +47,13 @@ namespace SteamStub_x64_v31
     #pragma pack(pop)
     // ----------------------------------------------------------------------------------------
 
+    // Unpack DRMP.dll from binary.
+    int UnpackSteamDRMP_Dll() {
+
+        return 0;
+    }
+
+    // Unpack protected .text (compiled code) section.
     int UnpackStub(std::vector<uint8_t>& file) {
         uint32_t ep_rva = 0; uint64_t image_base = 0;
         if (!PE64::get_entrypoint_rva(file, ep_rva, image_base)) { std::cerr << "[-] Failed to parse PE headers\n"; return 1; }
@@ -64,16 +72,8 @@ namespace SteamStub_x64_v31
         std::vector<uint8_t> stub_bytes(sizeof(StubHeader));
         memcpy(stub_bytes.data(), file.data() + stub_file_off, stub_bytes.size());
 
-        std::cout << "[*] Rolling XOR unwrap of stub header\n";
-        uint32_t key = *reinterpret_cast<uint32_t*>(stub_bytes.data());
-        uint8_t* p = stub_bytes.data() + sizeof(uint32_t);
-        uint8_t* endp = stub_bytes.data() + stub_bytes.size();
-        while (p < endp) {
-            uint32_t val = *reinterpret_cast<uint32_t*>(p);
-            *reinterpret_cast<uint32_t*>(p) = val ^ key;
-            key = val;
-            p += sizeof(uint32_t);
-        }
+        // Decrypt stub header.
+        Steam::Decryption::SteamXOR(stub_bytes);
 
         auto* header = reinterpret_cast<StubHeader*>(stub_bytes.data());
         std::cout << "[*] Stub signature (raw) = 0x" << std::hex << header->signature << std::dec << "\n";
@@ -133,13 +133,13 @@ namespace SteamStub_x64_v31
             printAESKey(header->aes_key, 32);
 
             std::cout << "[*] Running AES-256 ECB decrypt on IV\n";
-            AES256_ECB_decrypt(header->aes_iv, 16, header->aes_key);
+            Steam::Decryption::AES256_ECB_decrypt(header->aes_iv, 16, header->aes_key);
 
             std::cout << "[*] Running AES-256 CBC decrypt on code bytes\n";
             size_t decrypt_len = (v_code_bytes.size() / 16) * 16;
             if (decrypt_len == 0) { std::cerr << "[-] Nothing to decrypt\n"; return 1; }
 
-            AES256_CBC_decrypt(v_code_bytes.data(), decrypt_len, header->aes_key, header->aes_iv);
+            Steam::Decryption::AES256_CBC_decrypt(v_code_bytes.data(), decrypt_len, header->aes_key, header->aes_iv);
 
             // Remove PKCS#7 padding fromn decrypted section.
             pkcs7_unpad(v_code_bytes);
