@@ -68,23 +68,23 @@ namespace Steam
         static uint8_t multiply(uint8_t a, uint8_t b);
 
         static void KeyExpansion256(const uint8_t key[32], uint8_t roundKeys[240]);
-
         static void AddRoundKey(uint8_t state[16], const uint8_t* roundKey);
 
         static void InvSubBytes(uint8_t state[16]);
-
         static void InvShiftRows(uint8_t state[16]);
-
         static void InvMixColumns(uint8_t state[16]);
 
         static void AES256_DecryptBlock(uint8_t state[16], const uint8_t roundKeys[240]);
-
         static void AES256_ECB_decrypt(uint8_t* buf, size_t len, const uint8_t key[32]);
-
         static void AES256_CBC_decrypt(uint8_t* buf, size_t len, const uint8_t key[32], uint8_t iv[16]);
 
         // SteamXOR
-        static void* SteamXOR(std::vector<uint8_t>& stub_bytes);
+        static void SteamXOR(std::vector<uint8_t>& stub_bytes);
+
+        // XTEA
+        static void XTEAPass2(uint32_t res[2], const uint32_t* keys, uint32_t blockLo, uint32_t blockHi, uint32_t n);
+        static void XTEAPass1(std::vector<uint8_t>& data, const uint32_t* keys);
+
     };
 };
 

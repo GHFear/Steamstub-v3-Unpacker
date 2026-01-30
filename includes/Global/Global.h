@@ -13,3 +13,4 @@
 
 // Store unpacked buffer
 std::vector<uint8_t> unpacked_buffer;
+std::vector<uint8_t> unpackedDRMP_buffer;

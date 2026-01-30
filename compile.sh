@@ -12,9 +12,9 @@ source ./emsdk_env.sh
 cd ..
 
 # Compile C++ to WebAssembly/JS
-emcc main.cpp includes/Steam/Decryption/AES/AES.cpp includes/Steam/Decryption/SteamXOR/SteamXOR.cpp \
+emcc main.cpp includes/Steam/Decryption/AES/AES.cpp includes/Steam/Decryption/SteamXOR/SteamXOR.cpp includes/Steam/Decryption/XTEA/XTEA.cpp \
   -o index.js \
-  -s EXPORTED_FUNCTIONS='["_main","_unpack_buffer","_open_file","_get_unpacked_ptr","_get_unpacked_size","_check_version_information","_malloc","_free"]' \
+  -s EXPORTED_FUNCTIONS='["_main","_unpack_buffer","_open_file","_get_unpacked_ptr","_get_unpacked_size","_get_unpackedDRMP_ptr","_get_unpackedDRMP_size","_check_version_information","_malloc","_free"]' \
   -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","HEAPU8"]' \
   -s ALLOW_MEMORY_GROWTH=1 \
   -O3 \

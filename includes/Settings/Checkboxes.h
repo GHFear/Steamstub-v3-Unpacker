@@ -28,3 +28,10 @@ bool isKeepBindChecked() {
     emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("keepBind"));
     return checkbox["checked"].as<bool>();
 }
+
+EMSCRIPTEN_KEEPALIVE
+bool isDumpDRMPChecked() {
+    emscripten::val document = emscripten::val::global("document");
+    emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("dumpDRMP"));
+    return checkbox["checked"].as<bool>();
+}

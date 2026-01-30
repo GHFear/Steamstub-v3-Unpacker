@@ -47,9 +47,34 @@ namespace SteamStub_x64_v31
     #pragma pack(pop)
     // ----------------------------------------------------------------------------------------
 
-    // Unpack DRMP.dll from binary.
-    int UnpackSteamDRMP_Dll() {
-
+    int UnpackSteamDRMPDLL(StubHeader* header, uint32_t ep_rva, std::vector<uint8_t>& file) {
+        if (header->drmpdll_size == 0) {
+            std::cout << "[*] This exe doesn't have an embedded SteamDRMP.dll\n";
+            return 0;
+        } else {
+            std::cout << "[*] This exe has an embedded SteamDRMP.dll\n";
+            std::cout << "[*] SteamDRMP.dll offset: 0x" << std::hex << header->drmpdll_off << std::dec << "\n";
+            std::cout << "[*] SteamDRMP.dll size: 0x" << std::hex << header->drmpdll_size << std::dec << "\n";
+            std::cout << "[*] SteamDRMP.dll encryption key[0]: 0x" << std::hex << header->drmp_encrypt_keys[0] << std::dec << "\n";
+            std::cout << "[*] SteamDRMP.dll encryption key[1]: 0x" << std::hex << header->drmp_encrypt_keys[1] << std::dec << "\n";
+            std::cout << "[*] SteamDRMP.dll encryption key[2]: 0x" << std::hex << header->drmp_encrypt_keys[2] << std::dec << "\n";
+            std::cout << "[*] SteamDRMP.dll encryption key[3]: 0x" << std::hex << header->drmp_encrypt_keys[3] << std::dec << "\n";
+            if (isDumpDRMPChecked())
+            {
+                std::cout << "[*] You chose to unpack the embedded SteamDRMP.dll\n";
+                size_t drmp_off = 0;
+                uint32_t drmp_rva = ep_rva - header->bind_offset + header->drmpdll_off;
+                if (!PE64::rva_to_file_offset(file, drmp_rva, drmp_off)) { std::cerr << "[-] Failed to map DRMP RVA to file offset\n"; return 1; }
+                std::vector<uint8_t> drmpData(header->drmpdll_size);
+                std::memcpy(drmpData.data(), file.data() + drmp_off, drmpData.size());
+                Steam::Decryption::XTEAPass1(drmpData, header->drmp_encrypt_keys);
+                unpackedDRMP_buffer = std::move(drmpData);
+                return 0;
+            } else {
+                std::cout << "[*] You chose not to unpack the embedded SteamDRMP.dll\n";
+                return 0;
+            }
+        }
         return 0;
     }
 
@@ -96,6 +121,9 @@ namespace SteamStub_x64_v31
 
         bool NoErrorDialog = (header->flags & STUB_FLAG_NoErrorDialog) != 0;
         std::cout << "[*] NoErrorDialog flag: " << (NoErrorDialog ? "YES" : "NO") << "\n";
+
+        // Extract SteamDRMP.dll, if one exists 
+        if(UnpackSteamDRMPDLL(header, ep_rva, file) == 1) { return 1; }
 
         if (!NoEncryption) {
             // locate .text section

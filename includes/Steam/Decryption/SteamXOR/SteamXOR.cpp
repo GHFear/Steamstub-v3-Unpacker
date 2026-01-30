@@ -9,7 +9,7 @@
 // ------------------------------------------------------------------------- //
 #include "../Decryption.h"
 
-void* Steam::Decryption::SteamXOR(std::vector<uint8_t>& stub_bytes) {
+void Steam::Decryption::SteamXOR(std::vector<uint8_t>& stub_bytes) {
     std::cout << "[*] Rolling XOR unwrap of stub header\n";
     uint32_t key = *reinterpret_cast<uint32_t*>(stub_bytes.data());
     uint8_t* p = stub_bytes.data() + sizeof(uint32_t);
@@ -20,5 +20,4 @@ void* Steam::Decryption::SteamXOR(std::vector<uint8_t>& stub_bytes) {
         key = val;
         p += sizeof(uint32_t);
     }
-    return 0;
 }

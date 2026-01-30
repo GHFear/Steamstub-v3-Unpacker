@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SteamStub v3 Unpacker 0.1.9 | IllusorySoftware</title>
+  <title>SteamStub v3 Unpacker 0.2.0 | IllusorySoftware</title>
   <style>
     :root {
       --bg-1: #0f1724;
@@ -346,7 +346,7 @@
         </svg>
       </div>
       <div>
-        <h1>SteamStub v3 Unpacker 0.1.9 | IllusorySoftware</h1>
+        <h1>SteamStub v3 Unpacker 0.2.0 | IllusorySoftware</h1>
         <p>Drop your <code>.exe</code> to unpack</p>
       </div>
     </header>
@@ -387,6 +387,14 @@
           </span>
         </label>
 
+        <label class="option-checkbox tooltip">
+          <input type="checkbox" id="dumpDRMP" />
+          Dump SteamDRMP.dll
+          <span class="tooltip-text">
+            Decrypt and dump the SteamDRMP.dll, if one can be found inside the exe.
+          </span>
+        </label>
+
       </div>
     </div>
     
@@ -396,13 +404,13 @@
       <button class="tooltip" id="unpackBtn" disabled>
         Unpack
         <span class="tooltip-text">
-          Keeps the .bind section that is normally removed when we bypass the stub function.
+          Unpack .bind section and rebuild exe. (removes steam DRM)
         </span>
       </button>
       <button class="tooltip" id="saveBtn" disabled>
-        Save File
+        Save File(s)
         <span class="tooltip-text">
-          Save unpacked exe to disk.
+          Save unpacked file(s) to disk.
         </span>
       </button>
     </div>
@@ -496,11 +504,12 @@
     unpackLoadedFile();
   });
 
-  saveBtn.addEventListener('click', () => {
+  // Click to save file(s) | unpacked.exe
+  function saveExeFromBuffer() {
     const ptr = Module.ccall('get_unpacked_ptr', 'number', [], []);
     const size = Module.ccall('get_unpacked_size', 'number', [], []);
 
-    if (!ptr || !size) { alert("No unpacked buffer available"); return; }
+    if (!ptr || !size) { alert("No unpacked exe buffer available"); return; }
 
     const data = new Uint8Array(Module.HEAPU8.buffer, ptr, size);
     const blob = new Blob([data], { type: 'application/octet-stream' });
@@ -509,6 +518,39 @@
     a.download = loadedFile.name + '.unpacked.exe';
     a.click();
     URL.revokeObjectURL(url);
+  }
+  
+    // Click to save file(s) | SteamDRMP.dll
+  function saveSteamDRMPFromBuffer() {
+    const ptr = Module.ccall('get_unpackedDRMP_ptr', 'number', [], []);
+    const size = Module.ccall('get_unpackedDRMP_size', 'number', [], []);
+
+    // Check if we WANT to dump the SteamDRMP.dll and if one is available to us.
+    const dumpDRMP = document.getElementById("dumpDRMP");
+    let bufferFilled = ptr != null && size > 0;
+    if (bufferFilled === false && dumpDRMP.checked === true) {
+      alert("No unpacked SteamDRMP.dll buffer available"); 
+      return; 
+    }
+    else if (bufferFilled === true && dumpDRMP.checked === true) {
+      const data = new Uint8Array(Module.HEAPU8.buffer, ptr, size);
+      const blob = new Blob([data], { type: 'application/octet-stream' });
+      const a = document.createElement('a');
+      a.href = url = URL.createObjectURL(blob);
+      a.download = 'SteamDRMP.dll';
+      a.click();
+      URL.revokeObjectURL(url);
+      return; 
+    }
+    // else return.
+    return; 
+  }
+
+  saveBtn.addEventListener('click', () => {
+    // Save exe to disk from buffer.
+    saveExeFromBuffer();
+    // Save SteamDRMP.dll to disk from buffer.
+      saveSteamDRMPFromBuffer();
   });
 
   async function loadExecutableBuffer(file) {

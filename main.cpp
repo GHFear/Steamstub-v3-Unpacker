@@ -22,13 +22,13 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
+#include "includes/Global/Global.h"
 #include "includes/Steam/Decryption/Decryption.h"
 #include "includes/Tools/PE/x64/PE64.h"
 #include "includes/Tools/Tools.h"
 #include "includes/Settings/Checkboxes.h"
 #include "includes/SteamStub.x64.v30/Header.h"
 #include "includes/SteamStub.x64.v31/Header.h"
-#include "includes/Global/Global.h"
 
 // I might want to compile the application to an executable at some point. Keep main.
 int main(int argc, char** argv) {
@@ -59,6 +59,10 @@ extern "C" {
         // Copy file buffer into vector
         std::vector<uint8_t> file(ptr, ptr + size);
 
+        // Clear output buffers.
+        unpacked_buffer.clear();
+        unpackedDRMP_buffer.clear();
+
         if (file.empty()) { std::cerr << "[-] Failed to read input file\n"; return 1; }
         std::cout << "[*] Read file, size = " << file.size() << " bytes\n";
 
@@ -73,19 +77,7 @@ extern "C" {
 
         // Run unpacker based on SteamStub version.
         int result = 1;
-        if (steamstub_version == x86_V10)
-        {
-            return 1;
-        }
-        else if (steamstub_version == x86_V20)
-        {
-            return 1;
-        }
-        else if (steamstub_version == x86_V21)
-        {
-            return 1;
-        }
-        else if (steamstub_version == x64_V30)
+        if (steamstub_version == x64_V30)
         {
             result = SteamStub_x64_v30::UnpackStub(file);
         }
@@ -106,12 +98,19 @@ extern "C" {
         return 0;
     }
 
-    // Function for JS to fetch buffer pointer + size
+    // Functions for JS to fetch unpacked buffer pointer + size
     EMSCRIPTEN_KEEPALIVE
     uint8_t* get_unpacked_ptr() { return unpacked_buffer.data(); }
 
     EMSCRIPTEN_KEEPALIVE
     size_t get_unpacked_size() { return unpacked_buffer.size(); }
+
+    // Functions for JS to fetch unpacked DRMP buffer pointer + size
+    EMSCRIPTEN_KEEPALIVE
+    uint8_t* get_unpackedDRMP_ptr() { return unpackedDRMP_buffer.data(); }
+
+    EMSCRIPTEN_KEEPALIVE
+    size_t get_unpackedDRMP_size() { return unpackedDRMP_buffer.size(); }
 
     // Example JS save call
     EM_JS(void, open_file_js, (), {
