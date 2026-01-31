@@ -79,7 +79,7 @@ namespace SteamStub_x64_v31
     }
 
     // Unpack protected .text (compiled code) section.
-    int UnpackStub(std::vector<uint8_t>& file) {
+    int UnpackBind(std::vector<uint8_t>& file) {
         uint32_t ep_rva = 0; uint64_t image_base = 0;
         if (!PE64::get_entrypoint_rva(file, ep_rva, image_base)) { std::cerr << "[-] Failed to parse PE headers\n"; return 1; }
         std::cout << "[*] EntryPoint RVA = 0x" << std::hex << ep_rva << std::dec << "\n";

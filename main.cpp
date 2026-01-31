@@ -79,11 +79,11 @@ extern "C" {
         int result = 1;
         if (steamstub_version == x64_V30)
         {
-            result = SteamStub_x64_v30::UnpackStub(file);
+            result = SteamStub_x64_v30::UnpackBind(file);
         }
         else if (steamstub_version == x64_V310 || steamstub_version == x64_V312)
         {
-            result = SteamStub_x64_v31::UnpackStub(file);
+            result = SteamStub_x64_v31::UnpackBind(file);
         }
         else
         {
