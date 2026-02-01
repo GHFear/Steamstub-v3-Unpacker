@@ -4,7 +4,11 @@ A Steam DRM / SteamStub v3 unpacker implemented in C++ with support for WebAssem
 Online SteamStub v3 Unpacker:  [https://illusorytestbranch.netlify.app/](https://illusorytestbranch.netlify.app/) <br>
 
 ### Features<br>
-Unpacks and rebuilds original windows executable.<br>
+Unpacks and rebuilds original windows executable<br>
+Option to unpack and decrypt SteamDRMP.dll<br>
+Option to update PE checksum<br>
+Option to keep .bind section<br>
+Option to remove certificate table<br>
 Supports multiple SteamStub v3 versions<br>
 Written in modern C++<br>
 Compiles to WASM for cross-platform usage<br>
