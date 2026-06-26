@@ -1,76 +1,20 @@
 #pragma once
 // ------------------------------------------------------------------------- //
 //  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
-//  Version 0.1.8                                                            //
-//  Compatible with Emscripten (drop the emsdk folder next to this file and  //
-//  compile with the included compile script for linux)                      //
+//  Object-oriented helper tools                                             //
 // ------------------------------------------------------------------------- //
-//  Lots of credit to Cyanic (aka Golem_x86), atom0s and illnyang for prior  //
-//  research on steamstub drm.                                               //
-//  Without y'all, this wouldn't be possible.                                //
-// ------------------------------------------------------------------------- //
+
+#include <cctype>
+#include <cstddef>
+#include <cstdint>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 #include "ReadWrite/RW.h"
-
-// Print AES Key hexadecimal string.
-void printAESKey(const uint8_t* key, size_t size) {
-    std::cout << "[*] SteamStub AES Key: 0x";
-    for (size_t i = 0; i < size; ++i) {
-        std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)key[i];
-    }
-    std::cout << std::dec << "\n";
-}
-
-// Parse IDA Signature.
-static bool parse_ida_signature(const std::string& sig, std::vector<uint8_t>& pattern, std::vector<bool>& mask) {
-    std::istringstream iss(sig);
-    std::string token;
-    while (iss >> token) {
-        if (token == "?") {
-            pattern.push_back(0x00);
-            mask.push_back(false);
-        } else if (token.size() == 2 && std::isxdigit(token[0]) && std::isxdigit(token[1])) {
-            pattern.push_back(static_cast<uint8_t>(std::stoul(token, nullptr, 16)));
-            mask.push_back(true);
-        } else {
-            return false; 
-        }
-    }
-    return !pattern.empty();
-}
-
-// Scan binary buffer for matching IDA signature.
-static size_t scan_signature(const std::vector<uint8_t>& buffer, const std::string& ida_sig) {
-    std::vector<uint8_t> pattern;
-    std::vector<bool> mask;
-    if (!parse_ida_signature(ida_sig, pattern, mask)) return SIZE_MAX;
-
-    size_t buf_size = buffer.size();
-    size_t pat_size = pattern.size();
-    if (pat_size == 0 || buf_size < pat_size) return SIZE_MAX;
-
-    for (size_t i = 0; i <= buf_size - pat_size; ++i) {
-        bool match = true;
-        for (size_t j = 0; j < pat_size; ++j) {
-            if (mask[j] && buffer[i + j] != pattern[j]) {
-                match = false;
-                break;
-            }
-        }
-        if (match) return i;
-    }
-    return SIZE_MAX; // not found
-}
-
-static size_t pkcs7_unpad(std::vector<uint8_t>& buf) {
-    if (buf.empty()) return 0;
-    uint8_t pad = buf.back();
-    if (pad == 0 || pad > 16 || pad > buf.size()) return buf.size();
-    for (size_t i = 0; i < pad; ++i) {
-        if (buf[buf.size() - 1 - i] != pad) return buf.size();
-    }
-    buf.resize(buf.size() - pad);
-    return buf.size();
-}
 
 enum SteamStubVersion {
   Unknown,
@@ -87,103 +31,270 @@ enum SteamStubVersion {
   x64_V312
 };
 
-// Get SteamStub version.
-SteamStubVersion get_steamstub_version(std::vector<uint8_t> &bind_buffer) {
-    // Check for SteamStub version.
-    // Credit to atom0s for sigs | https://github.com/atom0s/Steamless/blob/master/Steamless.Unpacker.Variant31.x64/Main.cs
+namespace SteamStub
+{
+    class AesKeyFormatter
+    {
+    public:
+        static void print(const uint8_t* key, size_t size)
+        {
+            std::cout << "[*] SteamStub AES Key: 0x";
+            for (size_t i = 0; i < size; ++i) {
+                std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(key[i]);
+            }
+            std::cout << std::dec << "\n";
+        }
+    };
 
-    // V3 x64 base version.
-    if (scan_signature(bind_buffer, "E8 00 00 00 00 50 53 51 52 56 57 55 41 50") != SIZE_MAX) {
-        if (scan_signature(bind_buffer, "48 8D 91 ? ? ? ? 48") != SIZE_MAX) {
-            std::cout << "[*] SteamStub v3.0.0 x64\n";
-            return x64_V30;
+    class IdaSignature
+    {
+    public:
+        explicit IdaSignature(std::string signature)
+            : signature_(std::move(signature))
+        {
+            valid_ = parse();
         }
-        else if (scan_signature(bind_buffer, "48 8D 91 ? ? ? ? 41") != SIZE_MAX) {
-            std::cout << "[*] SteamStub v3.1.0 x64\n";
-            return x64_V310;
-        } 
-        else if (scan_signature(bind_buffer, "48 C7 84 24 ? ? ? ? ? ? ? ? 48") != SIZE_MAX) {
-            std::cout << "[*] SteamStub v3.1.2 x64\n";
-            return x64_V312;
+
+        bool valid() const { return valid_; }
+        const std::vector<uint8_t>& pattern() const { return pattern_; }
+        const std::vector<bool>& mask() const { return mask_; }
+
+    private:
+        bool parse()
+        {
+            std::istringstream iss(signature_);
+            std::string token;
+            while (iss >> token) {
+                if (token == "?") {
+                    pattern_.push_back(0x00);
+                    mask_.push_back(false);
+                } else if (token.size() == 2 &&
+                           std::isxdigit(static_cast<unsigned char>(token[0])) &&
+                           std::isxdigit(static_cast<unsigned char>(token[1]))) {
+                    pattern_.push_back(static_cast<uint8_t>(std::stoul(token, nullptr, 16)));
+                    mask_.push_back(true);
+                } else {
+                    return false;
+                }
+            }
+            return !pattern_.empty();
         }
-        else {
-            std::cout << "[-] Unknown SteamStub v3 x64 version.\n"; 
-            return Unknown;
-        } 
-    }
-    else if (scan_signature(bind_buffer, "E8 00 00 00 00 50 53 51 52 56 57 55 8B 44 24 1C 2D 05 00 00 00 8B CC 83 E4 F0 51 51 51 50") != SIZE_MAX) {
-        // V3 x86 base version.
-        if (size_t offset = scan_signature(bind_buffer, "55 8B EC 81 EC ? ? ? ? 53 ? ? ? ? ? 68"); offset != SIZE_MAX) {
-            uint64_t header_size = VectorRW::read_u32_le(bind_buffer, offset + 0x10);
-            std::cout << "[*] Stub header size = " << header_size << "\n";
-            if (header_size == 0xF0)
-            {
-                // We are confirmed 3.1.0 x86
-                std::cerr << "[-] SteamStub v3.1.0 x86 (Not yet supported)\n";
-                return x86_V310;
+
+        std::string signature_;
+        std::vector<uint8_t> pattern_;
+        std::vector<bool> mask_;
+        bool valid_ = false;
+    };
+
+    class SignatureScanner
+    {
+    public:
+        explicit SignatureScanner(const std::vector<uint8_t>& buffer)
+            : buffer_(buffer)
+        {
+        }
+
+        size_t find(const std::string& idaSignature) const
+        {
+            IdaSignature signature(idaSignature);
+            if (!signature.valid()) {
+                return notFound();
             }
-            else if (header_size == 0xD0 || header_size == 0xB0)
-            {
-                // We are confirmed 3.0.0 x86
-                std::cerr << "[-] SteamStub v3.0.0 x86 (Not yet supported)\n";
-                return x86_V30;
+
+            const size_t bufSize = buffer_.size();
+            const size_t patSize = signature.pattern().size();
+            if (patSize == 0 || bufSize < patSize) {
+                return notFound();
             }
-            
-            std::cout << "[-] Unknown SteamStub v3 x86 version.\n"; 
+
+            for (size_t i = 0; i <= bufSize - patSize; ++i) {
+                bool match = true;
+                for (size_t j = 0; j < patSize; ++j) {
+                    if (signature.mask()[j] && buffer_[i + j] != signature.pattern()[j]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) {
+                    return i;
+                }
+            }
+
+            return notFound();
+        }
+
+        static constexpr size_t notFound()
+        {
+            return std::numeric_limits<size_t>::max();
+        }
+
+    private:
+        const std::vector<uint8_t>& buffer_;
+    };
+
+    class Pkcs7Padding
+    {
+    public:
+        static size_t unpad(std::vector<uint8_t>& buf)
+        {
+            if (buf.empty()) {
+                return 0;
+            }
+
+            const uint8_t pad = buf.back();
+            if (pad == 0 || pad > 16 || pad > buf.size()) {
+                return buf.size();
+            }
+
+            for (size_t i = 0; i < pad; ++i) {
+                if (buf[buf.size() - 1 - i] != pad) {
+                    return buf.size();
+                }
+            }
+
+            buf.resize(buf.size() - pad);
+            return buf.size();
+        }
+    };
+
+    class SteamStubVersionDetector
+    {
+    public:
+        SteamStubVersion detect(const std::vector<uint8_t>& bindBuffer) const
+        {
+            SignatureScanner scanner(bindBuffer);
+
+            // Check for SteamStub version.
+            // Credit to atom0s for sigs | https://github.com/atom0s/Steamless/blob/master/Steamless.Unpacker.Variant31.x64/Main.cs
+
+            // V3 x64 base version.
+            if (scanner.find("E8 00 00 00 00 50 53 51 52 56 57 55 41 50") != SignatureScanner::notFound()) {
+                if (scanner.find("48 8D 91 ? ? ? ? 48") != SignatureScanner::notFound()) {
+                    std::cout << "[*] SteamStub v3.0.0 x64\n";
+                    return x64_V30;
+                }
+                if (scanner.find("48 8D 91 ? ? ? ? 41") != SignatureScanner::notFound()) {
+                    std::cout << "[*] SteamStub v3.1.0 x64\n";
+                    return x64_V310;
+                }
+                if (scanner.find("48 C7 84 24 ? ? ? ? ? ? ? ? 48") != SignatureScanner::notFound()) {
+                    std::cout << "[*] SteamStub v3.1.2 x64\n";
+                    return x64_V312;
+                }
+
+                std::cout << "[-] Unknown SteamStub v3 x64 version.\n";
+                return Unknown;
+            }
+
+            // V3 x86 base version.
+            if (scanner.find("E8 00 00 00 00 50 53 51 52 56 57 55 8B 44 24 1C 2D 05 00 00 00 8B CC 83 E4 F0 51 51 51 50") != SignatureScanner::notFound()) {
+                size_t offset = scanner.find("55 8B EC 81 EC ? ? ? ? 53 ? ? ? ? ? 68");
+                if (offset != SignatureScanner::notFound()) {
+                    const uint64_t headerSize = VectorRW::read_u32_le(bindBuffer, offset + 0x10);
+                    std::cout << "[*] Stub header size = " << headerSize << "\n";
+                    if (headerSize == 0xF0) {
+                        std::cerr << "[-] SteamStub v3.1.0 x86 (Not yet supported)\n";
+                        return x86_V310;
+                    }
+                    if (headerSize == 0xD0 || headerSize == 0xB0) {
+                        std::cerr << "[-] SteamStub v3.0.0 x86 (Not yet supported)\n";
+                        return x86_V30;
+                    }
+
+                    std::cout << "[-] Unknown SteamStub v3 x86 version.\n";
+                    return Unknown;
+                }
+
+                offset = scanner.find("55 8B EC 81 EC ? ? ? ? 53 ? ? ? ? ? 8D 83");
+                if (offset != SignatureScanner::notFound()) {
+                    const uint64_t headerSize = VectorRW::read_u32_le(bindBuffer, offset + 0x16);
+                    std::cout << "[*] Stub header size = " << headerSize << "\n";
+                    if (headerSize == 0xF0) {
+                        std::cerr << "[-] SteamStub v3.1.1 x86 (Not yet supported)\n";
+                        return x86_V311;
+                    }
+                    if (headerSize == 0xD0 || headerSize == 0xB0) {
+                        std::cerr << "[-] SteamStub v3.0.0 x86 (Not yet supported)\n";
+                        return x86_V30;
+                    }
+
+                    std::cout << "[-] Unknown SteamStub v3 x86 version.\n";
+                    return Unknown;
+                }
+
+                offset = scanner.find("55 8B EC 81 EC ? ? ? ? 56 ? ? ? ? ? ? ? ? ? ? 8D");
+                if (offset != SignatureScanner::notFound()) {
+                    const uint64_t headerSize = VectorRW::read_u32_le(bindBuffer, offset + 0x10);
+                    std::cout << "[*] Stub header size = " << headerSize << "\n";
+                    if (headerSize == 0xF0) {
+                        std::cerr << "[-] SteamStub v3.1.2 x86 (Not yet supported)\n";
+                        return x86_V312;
+                    }
+
+                    std::cout << "[-] Unknown SteamStub v3 x86 version.\n";
+                    return Unknown;
+                }
+
+                std::cerr << "[-] Unknown SteamStub v3 x86 version.\n";
+                return Unknown;
+            }
+
+            if (scanner.find("53 51 52 56 57 55 8B EC 81 EC 00 10 00 00 C7") != SignatureScanner::notFound()) {
+                std::cerr << "[-] SteamStub v2.1 x86 (Not yet supported)\n";
+                return x86_V21;
+            }
+
+            if (scanner.find("53 51 52 56 57 55 8B EC 81 EC 00 10 00 00 BE") != SignatureScanner::notFound()) {
+                std::cerr << "[-] SteamStub v2.0 x86 (Not yet supported)\n";
+                return x86_V20;
+            }
+
+            if (scanner.find("60 81 EC 00 10 00 00 BE ? ? ? ? B9 6A") != SignatureScanner::notFound()) {
+                std::cerr << "[-] SteamStub v1.0 x86 (Not yet supported)\n";
+                return x86_V10;
+            }
+
+            std::cerr << "[-] Unknown SteamStub version.\n";
             return Unknown;
         }
-        else if (size_t offset = scan_signature(bind_buffer, "55 8B EC 81 EC ? ? ? ? 53 ? ? ? ? ? 8D 83"); offset != SIZE_MAX) {
-            uint64_t header_size = VectorRW::read_u32_le(bind_buffer, offset + 0x16);
-            std::cout << "[*] Stub header size = " << header_size << "\n";
-            if (header_size == 0xF0)
-            {
-                // We are confirmed 3.1.1 x86
-                std::cerr << "[-] SteamStub v3.1.1 x86 (Not yet supported)\n";
-                return x86_V311;
-            }
-            else if (header_size == 0xD0 || header_size == 0xB0)
-            {
-                // We are confirmed 3.0.0 x86
-                std::cerr << "[-] SteamStub v3.0.0 x86 (Not yet supported)\n";
-                return x86_V30;
-            }
-            std::cout << "[-] Unknown SteamStub v3 x86 version.\n"; 
-            return Unknown;
-        } 
-        else if (size_t offset = scan_signature(bind_buffer, "55 8B EC 81 EC ? ? ? ? 56 ? ? ? ? ? ? ? ? ? ? 8D"); offset != SIZE_MAX) {
-            uint64_t header_size = VectorRW::read_u32_le(bind_buffer, offset + 0x10);
-            std::cout << "[*] Stub header size = " << header_size << "\n";
-            if (header_size == 0xF0)
-            {
-                // We are confirmed 3.1.2 x86
-                std::cerr << "[-] SteamStub v3.1.2 x86 (Not yet supported)\n";
-                return x86_V312;
-            }
-            std::cout << "[-] Unknown SteamStub v3 x86 version.\n"; 
-            return Unknown;
-        }
-        else {
-            std::cerr << "[-] Unknown SteamStub v3 x86 version.\n"; 
-            return Unknown;
-        } 
+    };
+
+}
+
+// Backwards-compatible wrappers for older call sites.
+inline void printAESKey(const uint8_t* key, size_t size)
+{
+    SteamStub::AesKeyFormatter::print(key, size);
+}
+
+inline bool parse_ida_signature(const std::string& sig, std::vector<uint8_t>& pattern, std::vector<bool>& mask)
+{
+    SteamStub::IdaSignature signature(sig);
+    if (!signature.valid()) {
+        return false;
     }
-    else if (scan_signature(bind_buffer, "53 51 52 56 57 55 8B EC 81 EC 00 10 00 00 C7") != SIZE_MAX) {
-        // V21 x86 version.
-        std::cerr << "[-] SteamStub v2.1 x86 (Not yet supported)\n";
-        return x86_V21;
-    }
-    else if (scan_signature(bind_buffer, "53 51 52 56 57 55 8B EC 81 EC 00 10 00 00 BE") != SIZE_MAX) {
-        // V20 x86 version
-        std::cerr << "[-] SteamStub v2.0 x86 (Not yet supported)\n";
-        return x86_V20;
-    }
-    else if (scan_signature(bind_buffer, "60 81 EC 00 10 00 00 BE ? ? ? ? B9 6A") != SIZE_MAX) {
-        // V10 x86 version.
-        std::cerr << "[-] SteamStub v1.0 x86 (Not yet supported)\n";
-        return x86_V10;
-    }
-    else {
-        std::cerr << "[-] Unknown SteamStub version.\n";
-        return Unknown;
-    }
+
+    pattern = signature.pattern();
+    mask = signature.mask();
+    return true;
+}
+
+inline size_t scan_signature(const std::vector<uint8_t>& buffer, const std::string& ida_sig)
+{
+    return SteamStub::SignatureScanner(buffer).find(ida_sig);
+}
+
+inline size_t pkcs7_unpad(std::vector<uint8_t>& buf)
+{
+    return SteamStub::Pkcs7Padding::unpad(buf);
+}
+
+inline SteamStubVersion get_steamstub_version(std::vector<uint8_t>& bind_buffer)
+{
+    return SteamStub::SteamStubVersionDetector().detect(bind_buffer);
+}
+
+inline SteamStubVersion get_steamstub_version(const std::vector<uint8_t>& bind_buffer)
+{
+    return SteamStub::SteamStubVersionDetector().detect(bind_buffer);
 }

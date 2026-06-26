@@ -9,7 +9,17 @@
 //  Without y'all, this wouldn't be possible.                                //
 // ------------------------------------------------------------------------- //
 #include "Flags.h"
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <iostream>
+#include <string>
+#include <vector>
+#include "../App/BrowserSettings.h"
+#include "../App/OutputBuffers.h"
 #include "../Steam/Decryption/Decryption.h"
+#include "../Tools/PE/x64/PE64.h"
+#include "../Tools/Tools.h"
 
 namespace SteamStub_x64_v30
 {
@@ -55,7 +65,15 @@ namespace SteamStub_x64_v30
     };
     #pragma pack(pop)
 
-    int UnpackSteamDRMPDLL(StubHeader* header, uint32_t ep_rva, std::vector<uint8_t>& file) {
+    class Unpacker
+    {
+    public:
+        Unpacker(SteamStub::OutputBuffers& outputs, const SteamStub::BrowserSettings& settings)
+            : outputs_(outputs), settings_(settings)
+        {
+        }
+
+        int unpackSteamDRMPDLL(StubHeader* header, uint32_t ep_rva, std::vector<uint8_t>& file) {
         if (header->drmpdll_size == 0) {
             std::cout << "[*] This exe doesn't have an embedded SteamDRMP.dll\n";
             return 0;
@@ -67,7 +85,7 @@ namespace SteamStub_x64_v30
             std::cout << "[*] SteamDRMP.dll encryption key[1]: 0x" << std::hex << header->drmp_encrypt_keys[1] << std::dec << "\n";
             std::cout << "[*] SteamDRMP.dll encryption key[2]: 0x" << std::hex << header->drmp_encrypt_keys[2] << std::dec << "\n";
             std::cout << "[*] SteamDRMP.dll encryption key[3]: 0x" << std::hex << header->drmp_encrypt_keys[3] << std::dec << "\n";
-            if (isDumpDRMPChecked())
+            if (settings_.dumpDRMP())
             {
                 std::cout << "[*] You chose to unpack the embedded SteamDRMP.dll\n";
                 size_t drmp_off = 0;
@@ -76,7 +94,7 @@ namespace SteamStub_x64_v30
                 std::vector<uint8_t> drmpData(header->drmpdll_size);
                 std::memcpy(drmpData.data(), file.data() + drmp_off, drmpData.size());
                 Steam::Decryption::XTEAPass1(drmpData, header->drmp_encrypt_keys);
-                unpackedDRMP_buffer = std::move(drmpData);
+                outputs_.setUnpackedDRMP(std::move(drmpData));
                 return 0;
             } else {
                 std::cout << "[*] You chose not to unpack the embedded SteamDRMP.dll\n";
@@ -87,7 +105,7 @@ namespace SteamStub_x64_v30
     }
 
     // Unpack protected .text (compiled code) section.
-    int UnpackCodeSection(std::vector<uint8_t>& file) {
+        int unpackCodeSection(std::vector<uint8_t>& file) {
         uint32_t ep_rva = 0; uint64_t image_base = 0;
         if (!PE64::get_entrypoint_rva(file, ep_rva, image_base)) { std::cerr << "[-] Failed to parse PE headers\n"; return 1; }
         std::cout << "[*] EntryPoint RVA = 0x" << std::hex << ep_rva << std::dec << "\n";
@@ -131,7 +149,7 @@ namespace SteamStub_x64_v30
         std::cout << "[*] NoErrorDialog flag: " << (NoErrorDialog ? "YES" : "NO") << "\n";
 
         // Extract SteamDRMP.dll, if one exists 
-        if(UnpackSteamDRMPDLL(header, ep_rva, file) == 1) { return 1; }
+        if (unpackSteamDRMPDLL(header, ep_rva, file) == 1) { return 1; }
 
         if (!NoEncryption) {
             // locate .text section
@@ -166,7 +184,7 @@ namespace SteamStub_x64_v30
             std::cout << "[*] Total bytes to decrypt = " << v_code_bytes.size() << "\n";
 
             // Print AES Key found the SteamStub header.
-            printAESKey(header->aes_key, 32);
+            SteamStub::AesKeyFormatter::print(header->aes_key, 32);
 
             std::cout << "[*] Running AES-256 ECB decrypt on IV\n";
             Steam::Decryption::AES256_ECB_decrypt(header->aes_iv, 16, header->aes_key);
@@ -178,7 +196,7 @@ namespace SteamStub_x64_v30
             Steam::Decryption::AES256_CBC_decrypt(v_code_bytes.data(), decrypt_len, header->aes_key, header->aes_iv);
 
             // Remove PKCS#7 padding fromn decrypted section.
-            pkcs7_unpad(v_code_bytes);
+            SteamStub::Pkcs7Padding::unpad(v_code_bytes);
 
             // Write back decrypted section and restore stolen bytes at the start (to match original binary size)
             size_t steal_sz = sizeof(header->code_section_stolen);
@@ -236,7 +254,7 @@ namespace SteamStub_x64_v30
 
             if (bind_idx >= 0) {
                 std::cout << "[*] .bind section found at index " << bind_idx << "\n";
-                if (isKeepBindChecked() == false) {
+                if (!settings_.keepBindSection()) {
                     std::cout << "[*] Removing .bind section at index " << bind_idx << "\n";
 
                     // shift all later sections left to overwrite .bind
@@ -287,7 +305,7 @@ namespace SteamStub_x64_v30
                 } else {
                     std::cout << "[*] Certificate table present: VA=" << origVA << " Size=" << origSize << '\n';
 
-                    if (isRemoveCertChecked() == true) {
+                    if (settings_.removeCertificate()) {
                         // Clear the data directory [4] fields
                         certDir.VirtualAddress = 0;
                         certDir.Size = 0;
@@ -300,7 +318,7 @@ namespace SteamStub_x64_v30
         }
 
         // Update PE Checksum (OptionalHeader.CheckSum)
-        if (isUpdateChecksumChecked() == true) {
+        if (settings_.updateChecksum()) {
             uint32_t newChecksum = PE64::CalculatePEChecksum(file);
 
             auto dos = reinterpret_cast<PE64::IMAGE_DOS_HEADER_MIN*>(file.data());
@@ -314,5 +332,16 @@ namespace SteamStub_x64_v30
 
         return 0;
     }
-};
+
+    private:
+        SteamStub::OutputBuffers& outputs_;
+        const SteamStub::BrowserSettings& settings_;
+    };
+
+    inline int UnpackCodeSection(std::vector<uint8_t>& file, SteamStub::OutputBuffers& outputs, const SteamStub::BrowserSettings& settings)
+    {
+        return Unpacker(outputs, settings).unpackCodeSection(file);
+    }
+}
+
 

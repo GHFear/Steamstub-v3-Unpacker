@@ -1,37 +1,33 @@
 #pragma once
 // ------------------------------------------------------------------------- //
 //  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
-//  Compatible with Emscripten (drop the emsdk folder next to this file and  //
-//  compile with the included compile script for linux)                      //
+//  Backwards-compatible checkbox helpers                                    //
 // ------------------------------------------------------------------------- //
-//  Lots of credit to Cyanic (aka Golem_x86), atom0s and illnyang for prior  //
-//  research on steamstub drm.                                               //
-//  Without y'all, this wouldn't be possible.                                //
-// ------------------------------------------------------------------------- //
+
+#include "../App/BrowserSettings.h"
+
+// These wrappers keep the original exported helper names available while the
+// implementation now lives in the BrowserSettings class.
 EMSCRIPTEN_KEEPALIVE
-bool isUpdateChecksumChecked() {
-    emscripten::val document = emscripten::val::global("document");
-    emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("updateChecksum"));
-    return checkbox["checked"].as<bool>();
+inline bool isUpdateChecksumChecked()
+{
+    return SteamStub::BrowserSettings().updateChecksum();
 }
 
 EMSCRIPTEN_KEEPALIVE
-bool isRemoveCertChecked() {
-    emscripten::val document = emscripten::val::global("document");
-    emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("removeCert"));
-    return checkbox["checked"].as<bool>();
+inline bool isRemoveCertChecked()
+{
+    return SteamStub::BrowserSettings().removeCertificate();
 }
 
 EMSCRIPTEN_KEEPALIVE
-bool isKeepBindChecked() {
-    emscripten::val document = emscripten::val::global("document");
-    emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("keepBind"));
-    return checkbox["checked"].as<bool>();
+inline bool isKeepBindChecked()
+{
+    return SteamStub::BrowserSettings().keepBindSection();
 }
 
 EMSCRIPTEN_KEEPALIVE
-bool isDumpDRMPChecked() {
-    emscripten::val document = emscripten::val::global("document");
-    emscripten::val checkbox = document.call<emscripten::val>("getElementById", std::string("dumpDRMP"));
-    return checkbox["checked"].as<bool>();
+inline bool isDumpDRMPChecked()
+{
+    return SteamStub::BrowserSettings().dumpDRMP();
 }

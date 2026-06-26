@@ -1,25 +1,17 @@
 #pragma once
 // ------------------------------------------------------------------------- //
 //  Self-contained SteamStub v3 unpacker By GHFear @ IllusorySoftware        //
-//  Compatible with Emscripten (drop the emsdk folder next to this file and  //
-//  compile with the included compile script for linux)                      //
+//  Object-oriented PE64 helpers                                             //
 // ------------------------------------------------------------------------- //
-//  Lots of credit to Cyanic (aka Golem_x86), atom0s and illnyang for prior  //
-//  research on steamstub drm.                                               //
-//  Without y'all, this wouldn't be possible.                                //
-// ------------------------------------------------------------------------- //
-#include <iostream>
-#include <vector>
-#include <string>
-#include <string_view>
-#include <fstream>
+
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <iomanip>
-#include <sstream> 
-#include <variant>
+#include <iostream>
+#include <string>
+#include <vector>
 
-namespace PE64 
+namespace PE64
 {
     #pragma pack(push,1)
     struct IMAGE_DOS_HEADER_MIN { uint16_t e_magic; uint16_t e_cblp; uint16_t e_cp; uint16_t e_crlc; uint16_t e_cparhdr; uint16_t e_minalloc; uint16_t e_maxalloc; uint16_t e_ss; uint16_t e_sp; uint16_t e_csum; uint16_t e_ip; uint16_t e_cs; uint16_t e_lfarlc; uint16_t e_ovno; uint16_t e_res[4]; uint16_t e_oemid; uint16_t e_oeminfo; uint16_t e_res2[10]; int32_t e_lfanew; };
@@ -74,137 +66,270 @@ namespace PE64
 
     constexpr int IMAGE_DIRECTORY_ENTRY_SECURITY = 4;
 
-    static bool get_entrypoint_rva(const std::vector<uint8_t>& buf, uint32_t &entry_rva, uint64_t &image_base) {
-        if (buf.size() < sizeof(IMAGE_DOS_HEADER_MIN)) return false;
-        auto dos = reinterpret_cast<const IMAGE_DOS_HEADER_MIN*>(buf.data());
-        if (dos->e_magic != 0x5A4D) return false;
-        size_t nt_off = static_cast<size_t>(dos->e_lfanew);
-        if (nt_off + sizeof(IMAGE_NT_HEADERS64_MIN) > buf.size()) return false;
-        auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64_MIN*>(buf.data() + nt_off);
-        if (nt->Signature != 0x00004550) return false;
-        entry_rva = nt->OptionalHeader.AddressOfEntryPoint;
-        image_base = nt->OptionalHeader.ImageBase;
-        return true;
-    }
+    class Image
+    {
+    public:
+        explicit Image(std::vector<uint8_t>& buffer)
+            : buffer_(buffer)
+        {
+        }
 
-    static bool rva_to_file_offset(const std::vector<uint8_t>& buf, uint32_t rva, size_t &out_file_offset) {
-        if (buf.size() < sizeof(IMAGE_DOS_HEADER_MIN)) return false;
-        auto dos = reinterpret_cast<const IMAGE_DOS_HEADER_MIN*>(buf.data());
-        if (dos->e_magic != 0x5A4D) return false;
-        size_t nt_off = static_cast<size_t>(dos->e_lfanew);
-        if (nt_off + sizeof(IMAGE_NT_HEADERS64_MIN) > buf.size()) return false;
-        auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64_MIN*>(buf.data() + nt_off);
-        if (nt->Signature != 0x00004550) return false;
-        const auto& fh = nt->FileHeader;
-        size_t sec_off = nt_off + sizeof(uint32_t) + sizeof(IMAGE_FILE_HEADER_MIN) + fh.SizeOfOptionalHeader;
-        if (sec_off + static_cast<size_t>(fh.NumberOfSections) * sizeof(IMAGE_SECTION_HEADER_MIN) > buf.size()) return false;
-        auto sh = reinterpret_cast<const IMAGE_SECTION_HEADER_MIN*>(buf.data() + sec_off);
-        for (int i = 0; i < fh.NumberOfSections; ++i) {
-            uint32_t va = sh[i].VirtualAddress;
-            uint32_t vs = sh[i].Misc.VirtualSize;
-            uint32_t raw = sh[i].PointerToRawData;
-            uint32_t rawsz = sh[i].SizeOfRawData;
-            uint32_t sect_size = std::max<uint32_t>(vs, rawsz);
-            if (rva >= va && rva < va + sect_size) {
-                uint32_t delta = rva - va;
-                out_file_offset = static_cast<size_t>(raw) + delta;
-                if (out_file_offset >= buf.size()) return false;
+        explicit Image(const std::vector<uint8_t>& buffer)
+            : buffer_(const_cast<std::vector<uint8_t>&>(buffer))
+        {
+        }
+
+        bool getEntryPoint(uint32_t& entryRva, uint64_t& imageBase) const
+        {
+            const auto* nt = ntHeaders();
+            if (!nt) {
+                return false;
+            }
+
+            entryRva = nt->OptionalHeader.AddressOfEntryPoint;
+            imageBase = nt->OptionalHeader.ImageBase;
+            return true;
+        }
+
+        bool rvaToFileOffset(uint32_t rva, size_t& outFileOffset) const
+        {
+            const auto* nt = ntHeaders();
+            if (!nt) {
+                return false;
+            }
+
+            const auto& fh = nt->FileHeader;
+            const auto* sh = sectionHeaders();
+            if (!sh) {
+                return false;
+            }
+
+            for (int i = 0; i < fh.NumberOfSections; ++i) {
+                const uint32_t va = sh[i].VirtualAddress;
+                const uint32_t vs = sh[i].Misc.VirtualSize;
+                const uint32_t raw = sh[i].PointerToRawData;
+                const uint32_t rawsz = sh[i].SizeOfRawData;
+                const uint32_t sectSize = std::max<uint32_t>(vs, rawsz);
+                if (rva >= va && rva < va + sectSize) {
+                    const uint32_t delta = rva - va;
+                    outFileOffset = static_cast<size_t>(raw) + delta;
+                    return outFileOffset < buffer_.size();
+                }
+            }
+
+            if (rva < buffer_.size()) {
+                outFileOffset = rva;
                 return true;
             }
-        }
-        // fallback: if rva within headers
-        if (rva < buf.size()) { out_file_offset = rva; return true; }
-        return false;
-    }
 
-    // Extract .bind section.
-    bool extract_bind(std::vector<uint8_t> &file, size_t &section_size, size_t &section_offset) {
-        auto dos2 = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(file.data());
-        size_t nt_off2 = static_cast<size_t>(dos2->e_lfanew);
-        auto nt2 = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(file.data() + nt_off2);
-        auto& fh2 = nt2->FileHeader;
-
-        size_t sec_off2 = nt_off2 + sizeof(uint32_t) + sizeof(IMAGE_FILE_HEADER_MIN) + fh2.SizeOfOptionalHeader;
-        auto sh2 = reinterpret_cast<IMAGE_SECTION_HEADER_MIN*>(file.data() + sec_off2);
-
-        int bind_idx = -1;
-        for (int i = 0; i < fh2.NumberOfSections; ++i) {
-            std::string name(sh2[i].Name, sh2[i].Name + 8);
-            size_t z = name.find('\0'); if (z != std::string::npos) name.resize(z);
-            if (name == ".bind") { std::cout << "[*] .bind section found\n"; bind_idx = i; break; }
+            return false;
         }
 
-        // Assuming bind_idx is valid
-        if (bind_idx != -1) {
-            auto& bind_section = sh2[bind_idx];
+        bool extractBindSection(size_t& sectionSize, size_t& sectionOffset) const
+        {
+            const IMAGE_SECTION_HEADER_MIN* bindSection = findSection(".bind");
+            if (!bindSection) {
+                std::cerr << "[-] No .bind section could be found\n";
+                return false;
+            }
 
-            section_size = bind_section.SizeOfRawData;
-            section_offset = bind_section.PointerToRawData;
+            std::cout << "[*] .bind section found\n";
+            sectionSize = bindSection->SizeOfRawData;
+            sectionOffset = bindSection->PointerToRawData;
 
-            // Make sure offset + size does not exceed file size
-            if (section_offset + section_size <= file.size()) {
+            if (sectionOffset + sectionSize <= buffer_.size()) {
                 return true;
             }
+
+            std::cerr << "[-] .bind section is out of bounds\n";
+            return false;
         }
-        
-        std::cerr << "[-] No .bind section could be found\n";
-        return false;
-    }
 
-    uint32_t CalculatePEChecksum(std::vector<uint8_t>& file) {
-        if (file.size() < 0x100) return false; 
-        // trivial sanity 
-        uint8_t *base = file.data(); 
-        size_t filesize = file.size(); 
-        // Validate DOS header and NT headers offsets 
-        auto dos = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(base); 
-        size_t nt_off = static_cast<size_t>(dos->e_lfanew); 
-        if (nt_off + sizeof(IMAGE_NT_HEADERS64_MIN) > filesize) return false; 
-        auto nt = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(base + nt_off); 
-        // Compute checksum field offset 
-        size_t checksum_off = reinterpret_cast<uint8_t*>(&nt->OptionalHeader.CheckSum) - base; 
-        if (checksum_off + sizeof(uint32_t) > filesize) return false;
-
-        // Perform checksum
-        uint64_t checksum = 0;
-        uint64_t top = 0xFFFFFFFFULL;
-        top++;
-
-        // Walk file in DWORDs
-        for (size_t i = 0; i + 3 < filesize; i += 4) {
-            uint32_t dw = 0;
-            std::memcpy(&dw, base + i, sizeof(dw));
-
-            // Skip the CheckSum field
-            if (i == checksum_off) continue;
-
-            checksum = (checksum & 0xffffffffULL) + dw + (checksum >> 32);
-            if (checksum > top) {
-                checksum = (checksum & 0xffffffffULL) + (checksum >> 32);
+        const IMAGE_SECTION_HEADER_MIN* findSection(const std::string& requestedName) const
+        {
+            const auto* nt = ntHeaders();
+            const auto* sh = sectionHeaders();
+            if (!nt || !sh) {
+                return nullptr;
             }
+
+            for (int i = 0; i < nt->FileHeader.NumberOfSections; ++i) {
+                if (sectionName(sh[i]) == requestedName) {
+                    return &sh[i];
+                }
+            }
+
+            return nullptr;
         }
 
-        // Handle remaining bytes (if filesize not multiple of 4)
-        size_t remainder = filesize & 3;
-        if (remainder) {
-            uint32_t last = 0;
-            std::memcpy(&last, base + (filesize - remainder), remainder);
-            if ((filesize - remainder) != checksum_off) {
-                checksum = (checksum & 0xffffffffULL) + last + (checksum >> 32);
+        IMAGE_SECTION_HEADER_MIN* mutableSectionHeaders()
+        {
+            auto* nt = ntHeaders();
+            if (!nt) {
+                return nullptr;
+            }
+
+            const size_t secOff = sectionHeaderOffset();
+            const size_t count = nt->FileHeader.NumberOfSections;
+            if (secOff + count * sizeof(IMAGE_SECTION_HEADER_MIN) > buffer_.size()) {
+                return nullptr;
+            }
+
+            return reinterpret_cast<IMAGE_SECTION_HEADER_MIN*>(buffer_.data() + secOff);
+        }
+
+        IMAGE_NT_HEADERS64_MIN* ntHeaders()
+        {
+            if (buffer_.size() < sizeof(IMAGE_DOS_HEADER_MIN)) {
+                return nullptr;
+            }
+
+            auto* dos = reinterpret_cast<IMAGE_DOS_HEADER_MIN*>(buffer_.data());
+            if (dos->e_magic != 0x5A4D || dos->e_lfanew < 0) {
+                return nullptr;
+            }
+
+            const size_t ntOff = static_cast<size_t>(dos->e_lfanew);
+            if (ntOff + sizeof(IMAGE_NT_HEADERS64_MIN) > buffer_.size()) {
+                return nullptr;
+            }
+
+            auto* nt = reinterpret_cast<IMAGE_NT_HEADERS64_MIN*>(buffer_.data() + ntOff);
+            if (nt->Signature != 0x00004550) {
+                return nullptr;
+            }
+
+            return nt;
+        }
+
+        const IMAGE_NT_HEADERS64_MIN* ntHeaders() const
+        {
+            return const_cast<Image*>(this)->ntHeaders();
+        }
+
+        const IMAGE_SECTION_HEADER_MIN* sectionHeaders() const
+        {
+            const auto* nt = ntHeaders();
+            if (!nt) {
+                return nullptr;
+            }
+
+            const size_t secOff = sectionHeaderOffset();
+            const size_t count = nt->FileHeader.NumberOfSections;
+            if (secOff + count * sizeof(IMAGE_SECTION_HEADER_MIN) > buffer_.size()) {
+                return nullptr;
+            }
+
+            return reinterpret_cast<const IMAGE_SECTION_HEADER_MIN*>(buffer_.data() + secOff);
+        }
+
+        uint32_t calculateChecksum()
+        {
+            if (buffer_.size() < 0x100) {
+                return 0;
+            }
+
+            uint8_t* base = buffer_.data();
+            const size_t filesize = buffer_.size();
+            auto* nt = ntHeaders();
+            if (!nt) {
+                return 0;
+            }
+
+            const size_t checksumOff = reinterpret_cast<uint8_t*>(&nt->OptionalHeader.CheckSum) - base;
+            if (checksumOff + sizeof(uint32_t) > filesize) {
+                return 0;
+            }
+
+            uint64_t checksum = 0;
+            uint64_t top = 0xFFFFFFFFULL;
+            top++;
+
+            for (size_t i = 0; i + 3 < filesize; i += 4) {
+                uint32_t dw = 0;
+                std::memcpy(&dw, base + i, sizeof(dw));
+
+                if (i == checksumOff) {
+                    continue;
+                }
+
+                checksum = (checksum & 0xffffffffULL) + dw + (checksum >> 32);
                 if (checksum > top) {
                     checksum = (checksum & 0xffffffffULL) + (checksum >> 32);
                 }
             }
+
+            const size_t remainder = filesize & 3;
+            if (remainder) {
+                uint32_t last = 0;
+                std::memcpy(&last, base + (filesize - remainder), remainder);
+                if ((filesize - remainder) != checksumOff) {
+                    checksum = (checksum & 0xffffffffULL) + last + (checksum >> 32);
+                    if (checksum > top) {
+                        checksum = (checksum & 0xffffffffULL) + (checksum >> 32);
+                    }
+                }
+            }
+
+            checksum = (checksum & 0xffffULL) + (checksum >> 16);
+            checksum = (checksum & 0xffffULL) + (checksum >> 16);
+            checksum &= 0xffffULL;
+            checksum += static_cast<uint32_t>(filesize);
+
+            return static_cast<uint32_t>(checksum);
         }
 
-        // Final folds
-        checksum = (checksum & 0xffffULL) + (checksum >> 16);
-        checksum = (checksum & 0xffffULL) + (checksum >> 16);
-        checksum = checksum & 0xffffULL;
+        static std::string sectionName(const IMAGE_SECTION_HEADER_MIN& section)
+        {
+            std::string name(section.Name, section.Name + 8);
+            const size_t z = name.find('\0');
+            if (z != std::string::npos) {
+                name.resize(z);
+            }
+            return name;
+        }
 
-        checksum += static_cast<uint32_t>(filesize);
+    private:
+        size_t ntHeaderOffset() const
+        {
+            if (buffer_.size() < sizeof(IMAGE_DOS_HEADER_MIN)) {
+                return 0;
+            }
 
-        return static_cast<uint32_t>(checksum);
+            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER_MIN*>(buffer_.data());
+            return dos->e_lfanew < 0 ? 0 : static_cast<size_t>(dos->e_lfanew);
+        }
+
+        size_t sectionHeaderOffset() const
+        {
+            const auto* nt = ntHeaders();
+            if (!nt) {
+                return 0;
+            }
+
+            return ntHeaderOffset() + sizeof(uint32_t) + sizeof(IMAGE_FILE_HEADER_MIN) + nt->FileHeader.SizeOfOptionalHeader;
+        }
+
+        std::vector<uint8_t>& buffer_;
+    };
+
+    inline bool get_entrypoint_rva(const std::vector<uint8_t>& buf, uint32_t& entry_rva, uint64_t& image_base)
+    {
+        return Image(buf).getEntryPoint(entry_rva, image_base);
     }
-};
 
+    inline bool rva_to_file_offset(const std::vector<uint8_t>& buf, uint32_t rva, size_t& out_file_offset)
+    {
+        return Image(buf).rvaToFileOffset(rva, out_file_offset);
+    }
+
+    inline bool extract_bind(std::vector<uint8_t>& file, size_t& section_size, size_t& section_offset)
+    {
+        return Image(file).extractBindSection(section_size, section_offset);
+    }
+
+    inline uint32_t CalculatePEChecksum(std::vector<uint8_t>& file)
+    {
+        return Image(file).calculateChecksum();
+    }
+}
